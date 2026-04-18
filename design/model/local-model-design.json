@@ -1,0 +1,310 @@
+{
+  "version": 4,
+  "summary": "One-click managed local model experience for MetisNote. Users choose a model and click Add & Download; the app handles everything else. No IP address, port, protocol, or API key is ever shown to the user.",
+  "designPrinciples": [
+    "One-click first: the normal path is a single primary action, not a form.",
+    "Zero-config by default: protocol, endpoint, port, runtime arguments, and model identifier are system-managed and never shown to the user.",
+    "Progressive disclosure: advanced runtime tuning is hidden unless the user explicitly asks for it.",
+    "Safe automation: preflight checks, checksum verification, health checks, and rollback happen automatically.",
+    "Single source of truth: installed artifacts, active runtime, and visible LLM configs are linked by internal IDs instead of manual strings."
+  ],
+  "userPromise": {
+    "primaryAction": "Choose a model and click \"Add & Download\".",
+    "normalUserNeedsToDo": [
+      "Open Settings > Intelligence > Local Models.",
+      "Choose a recommended model size.",
+      "Click the primary action button once."
+    ],
+    "systemWillDo": [
+      "Choose the default verified quantization for the selected model.",
+      "Check disk space, memory expectations, platform, and runtime compatibility.",
+      "Download the GGUF model file and prepare the bundled node-llama-cpp runtime automatically.",
+      "Verify artifact integrity before installation.",
+      "Install the model into managed storage and keep runtime metadata under managed state.",
+      "Create a managed-local LLM config automatically.",
+      "Bind the internal runtime handle and request model name automatically (never shown to user).",
+      "Start the local runtime and mark the model ready when runtime initialization succeeds.",
+      "Enable the new local model automatically when there is no active local model yet."
+    ],
+    "hiddenFromUser": [
+      "internal runtime route or compatibility endpoint",
+      "runtime backend details and launch parameters",
+      "model identifier (the model field in API requests)",
+      "API Key input (managed models do not need a key)",
+      "protocol type (openai-compatible / anthropic-compatible)",
+      "quantization chooser",
+      "installed artifact IDs"
+    ]
+  },
+  "scope": {
+    "defaultExperience": "zero-config",
+    "initialModelFormat": "GGUF",
+    "initialModelType": "chat-only",
+    "runtimeEngine": "node-llama-cpp",
+    "runtimeBinary": "bundled native bindings",
+    "runtimeMode": "in-process",
+    "singleActiveLocalModel": true,
+    "autoCreateConfig": true,
+    "autoEnableOnFirstInstall": true
+  },
+  "configTypes": {
+    "summary": "Managed-local is the primary path for local models; legacy self-hosted llama.cpp-style endpoints remain an advanced fallback concept only.",
+    "types": {
+      "builtin": {
+        "purpose": "Built-in remote models (Kimi, OpenAI, etc.).",
+        "endpointSource": "Determined by preset.",
+        "userEntry": "Generic model dialog."
+      },
+      "custom": {
+        "purpose": "User-defined remote models with custom endpoint.",
+        "endpointSource": "User-provided.",
+        "userEntry": "Generic model dialog."
+      },
+      "llamacpp": {
+        "purpose": "Advanced option for users who run their own llama.cpp or compatible inference server externally.",
+        "endpointSource": "User-provided (e.g. http://127.0.0.1:8080/v1).",
+        "userEntry": "Generic model dialog, deprioritized under an advanced section.",
+        "notes": "Not the default local model entry point. Intended for power users only."
+      },
+      "managed-local": {
+        "purpose": "System-managed local model. The primary way for normal users to use local models.",
+        "endpointSource": "Derived by the runtime manager internally. Never user-editable. Never displayed.",
+        "userEntry": "Dedicated Local Models page only. Not created via the generic model dialog.",
+        "apiKeyRequired": false,
+        "modelIdentifierRequired": false,
+        "editBehavior": "Clicking edit in the generic model list redirects to the dedicated Local Models page.",
+        "displayFormat": "Show as 'Local Model · {displayName}' with status badge. No endpoint, port, or IP shown."
+      }
+    }
+  },
+  "userJourney": {
+    "entryPoint": "Settings > Intelligence > Local Models",
+    "happyPath": [
+      "User sees a short curated list of recommended local models rather than protocol or endpoint forms.",
+      "User clicks \"Add & Download\" on a model card or list row.",
+      "App runs preflight checks and shows a single inline progress card.",
+      "App downloads model artifacts, verifies them, installs them, and creates the managed-local config automatically.",
+      "App initializes node-llama-cpp for the selected model, performs a readiness check, then marks the model as ready.",
+      "The model becomes usable in the existing LLM flow without further setup."
+    ],
+    "visibleStates": [
+      "Not installed",
+      "Preparing",
+      "Downloading",
+      "Installing",
+      "Starting",
+      "Ready",
+      "In use",
+      "Attention required"
+    ],
+    "emptyStateCopy": "Choose a recommended local model and click Add & Download to start using local AI."
+  },
+  "genericModelListRules": {
+    "summary": "Rules for how managed-local models appear in the generic (all models) list.",
+    "listDisplay": "Show 'Local Model' badge + model name + running status. Never show endpoint URL.",
+    "editAction": "Redirect to the dedicated Local Models page. Do not open the generic edit form.",
+    "enableDisable": "Normal toggle, same as remote models.",
+    "delete": "Redirect to the dedicated Local Models page for the uninstall flow.",
+    "testConnection": "Performed automatically via the runtime manager readiness check. No URL shown to user."
+  },
+  "automationRules": {
+    "preflightChecks": [
+      "Block the action when free disk space is lower than the required download size plus a safety buffer.",
+      "Show a simple resource warning when the larger model may exceed available memory, while recommending the smaller model instead.",
+        "Use the bundled node-llama-cpp runtime that matches the packaged app build automatically.",
+      "Resume interrupted downloads automatically whenever the source supports ranged requests."
+    ],
+    "autoSelection": {
+      "defaultQuantizationStrategy": "One verified recommended quantization per model. Normal users never choose quantization.",
+      "modelRecommendationStrategy": "Qwen3.5 4B as the default recommended option for most devices. Qwen3.5 9B as the higher-quality option when hardware allows.",
+      "fallbackPolicy": "If the primary repository is unavailable, switch to a verified fallback repository without changing the UI flow."
+    },
+    "autoConfiguration": [
+      "Managed local models never ask for protocol, endpoint, API key, or model identifier.",
+      "The app stores an internal installedArtifactId and derives all connection details from it.",
+      "The app creates a managed-local LLM config immediately after installation succeeds.",
+      "Only one managed local runtime stays active at a time; switching models stops the previous one automatically."
+    ],
+    "autoRecovery": [
+      "Retry transient network failures with backoff.",
+      "Preserve partial downloads so they can resume after app restart.",
+      "If runtime startup fails, keep the installation and expose one-click retry.",
+      "If checksum verification fails, delete the corrupted artifact and restart the download from a clean state."
+    ]
+  },
+  "settingsExperience": {
+    "surfaceSections": [
+      "Recommended local models",
+      "Installed local models",
+      "Download queue",
+      "Runtime status"
+    ],
+    "primaryListFields": [
+      "display name",
+      "recommended badge",
+      "quality tier",
+      "estimated download size",
+      "estimated memory",
+      "status"
+    ],
+    "hiddenFromNormalUsers": [
+      "protocol type",
+      "endpoint URL (e.g. http://127.0.0.1:8080/v1)",
+      "localhost IP address and port number",
+      "model identifier (API model field)",
+      "API Key input",
+      "runtime binary path",
+      "launch arguments",
+      "quantization chooser"
+    ],
+    "primaryActions": [
+      "Add & Download",
+      "Pause",
+      "Resume",
+      "Cancel",
+      "Start",
+      "Stop",
+      "Delete"
+    ],
+    "defaultPostInstallBehavior": [
+      "Create the managed-local model entry automatically after installation.",
+      "Start the runtime automatically after installation unless the user has disabled auto-run globally.",
+      "If no model is active yet, make the new local model active automatically.",
+      "If the model is already installed, replace the primary action with Start or Use Now."
+    ],
+    "advancedMode": {
+      "defaultVisible": false,
+      "entry": "Only behind an explicit Advanced action.",
+      "fields": [
+        "context size override",
+        "GPU layers override",
+        "threads override",
+        "manual runtime restart",
+        "log export"
+      ]
+    }
+  },
+  "runtimeArchitecture": {
+    "storageLayout": {
+      "root": "userData/metis-note-models",
+      "catalogDir": "catalog",
+      "downloadsDir": "downloads",
+      "modelsDir": "models",
+      "runtimeDir": "runtime",
+      "logsDir": "logs",
+      "registryFile": "registry.json"
+    },
+    "downloadManager": {
+      "requirements": [
+        "Support pause, resume, and cancel.",
+        "Use temporary .part files until checksum verification succeeds.",
+        "Preflight disk-space checks before starting a download.",
+        "Limit concurrent large downloads to keep the app responsive.",
+        "Emit progress events from the main process over IPC."
+      ],
+      "downloadStates": [
+        "queued",
+        "downloading",
+        "paused",
+        "verifying",
+        "installed",
+        "failed",
+        "cancelled"
+      ],
+      "verification": {
+        "checksum": "sha256",
+        "checksumSource": "catalog metadata collected during implementation"
+      }
+    },
+    "runtimeManager": {
+      "startupFlow": [
+        "Ensure the selected GGUF model is installed.",
+        "Ensure the bundled node-llama-cpp runtime is available for the current platform.",
+        "Load the selected GGUF file through node-llama-cpp.",
+        "Create the managed context and chat session with system defaults.",
+        "Complete the runtime readiness path before exposing the model as available."
+      ],
+      "shutdownFlow": [
+        "Stop the active local runtime when the user switches to another local model.",
+        "Stop the active local runtime on app quit.",
+        "Preserve logs and last health status for troubleshooting."
+      ],
+      "recommendedDefaults": {
+        "ctxSize": 16384,
+        "flashAttention": true,
+        "gpuLayers": "auto",
+        "threads": "auto"
+      }
+    },
+    "registryEntities": {
+      "installedArtifact": "Tracks downloaded GGUF model files and the managed runtime metadata associated with them.",
+      "managedLocalConfig": "Links a user-visible local model entry (configType: managed-local) to an installedArtifactId. No user-editable endpoint or API key stored.",
+      "activeRuntime": "Tracks the single running node-llama-cpp model/context/session lifecycle."
+    }
+  },
+  "initialDownloads": [
+    {
+      "id": "qwen35-4b-q4-k-m",
+      "displayName": "Qwen3.5 4B",
+      "family": "Qwen3.5",
+      "parameterSize": "4B",
+      "qualityTier": "balanced",
+      "recommended": true,
+      "defaultForMostUsers": true,
+      "oneClickActionLabel": "Add & Download",
+      "format": "GGUF",
+      "quantization": "Q4_K_M",
+      "publisher": "lmstudio-community",
+      "repository": "lmstudio-community/Qwen3.5-4B-GGUF",
+      "repositoryPage": "https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF",
+      "filename": "Qwen3.5-4B-Q4_K_M.gguf",
+      "downloadUrl": "https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
+      "license": "Apache-2.0",
+      "contextLength": 262144,
+      "estimatedDownloadSizeGiB": 2.6,
+      "estimatedRuntimeMemoryGiB": 5.0,
+      "verifiedAt": "2026-04-17",
+      "fallbackRepositories": [
+        "unsloth/Qwen3.5-4B-GGUF"
+      ]
+    },
+    {
+      "id": "qwen35-9b-q4-k-m",
+      "displayName": "Qwen3.5 9B",
+      "family": "Qwen3.5",
+      "parameterSize": "9B",
+      "qualityTier": "higher-quality",
+      "recommended": true,
+      "defaultForMostUsers": false,
+      "recommendedWhenResourcesAllow": true,
+      "oneClickActionLabel": "Add & Download",
+      "format": "GGUF",
+      "quantization": "Q4_K_M",
+      "publisher": "lmstudio-community",
+      "repository": "lmstudio-community/Qwen3.5-9B-GGUF",
+      "repositoryPage": "https://huggingface.co/lmstudio-community/Qwen3.5-9B-GGUF",
+      "filename": "Qwen3.5-9B-Q4_K_M.gguf",
+      "downloadUrl": "https://huggingface.co/lmstudio-community/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf",
+      "license": "Apache-2.0",
+      "contextLength": 262144,
+      "estimatedDownloadSizeGiB": 5.4,
+      "estimatedRuntimeMemoryGiB": 9.5,
+      "verifiedAt": "2026-04-17",
+      "fallbackRepositories": [
+        "unsloth/Qwen3.5-9B-GGUF"
+      ]
+    }
+  ],
+  "edgeCases": {
+    "insufficientDisk": "Block the action and tell the user how much additional free space is needed.",
+    "insufficientMemory": "Recommend the smaller model instead of exposing low-level tuning first.",
+    "reinstall": "If the same model is already installed, replace the primary action with Start or Use Now.",
+    "switchModel": "Switching active local models stops the previous runtime automatically."
+  },
+  "rollout": [
+    "Phase 1: artifact registry, download queue, runtime package installation, managed-local config type, and zero-config binding primitives.",
+    "Phase 2: dedicated one-click local model catalog UI with Qwen3.5 4B and 9B download entries.",
+    "Phase 3: managed llama.cpp start/stop, health checks, seamless activation, and auto-recovery.",
+    "Phase 4: advanced mode, diagnostics, llamacpp type deprioritized to advanced section, more models."
+  ]
+}

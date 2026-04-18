@@ -1,0 +1,209 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 215 38% 97%;
+    --foreground: 221 41% 14%;
+    --muted: 216 26% 93%;
+    --muted-foreground: 219 14% 46%;
+    --card: 0 0% 100%;
+    --card-foreground: 221 41% 14%;
+    --border: 216 24% 87%;
+    --input: 216 24% 87%;
+    --primary: 221 87% 57%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 216 100% 96%;
+    --accent-foreground: 221 41% 18%;
+    --ring: 221 87% 57%;
+    --radius: 0.9rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    min-height: 100%;
+  }
+
+  body {
+    @apply antialiased text-foreground;
+    margin: 0;
+    background: linear-gradient(180deg, #eef2f7 0%, #f4f7fb 100%);
+  }
+
+  ::selection {
+    background: rgba(47, 101, 246, 0.16);
+  }
+}
+
+@layer components {
+  .surface-panel {
+    @apply rounded-[1rem] border border-white/70 bg-white/85 shadow-lift backdrop-blur;
+  }
+
+  .window-chrome-spacer {
+    -webkit-app-region: drag;
+    backdrop-filter: blur(12px);
+  }
+
+  .window-chrome-action {
+    -webkit-app-region: no-drag;
+  }
+}
+
+.ProseMirror {
+  min-height: 520px;
+  outline: none;
+  color: hsl(var(--foreground));
+}
+
+.ProseMirror[contenteditable="false"] {
+  cursor: default;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+  height: 0;
+}
+
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3 {
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.ProseMirror h1 {
+  font-size: 1.9rem;
+  margin: 1.35rem 0 0.75rem;
+}
+
+.ProseMirror h2 {
+  font-size: 1.45rem;
+  margin: 1.2rem 0 0.65rem;
+}
+
+.ProseMirror h3 {
+  font-size: 1.2rem;
+  margin: 1rem 0 0.55rem;
+}
+
+.ProseMirror p,
+.ProseMirror ul,
+.ProseMirror ol,
+.ProseMirror blockquote,
+.ProseMirror pre {
+  margin: 1rem 0;
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5rem;
+}
+
+.ProseMirror li {
+  margin: 0.35rem 0;
+}
+
+.ProseMirror a {
+  color: #2563eb;
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.16em;
+  word-break: break-word;
+}
+
+.ProseMirror a:hover {
+  color: #1d4ed8;
+}
+
+.ProseMirror .tableWrapper {
+  margin: 1rem 0;
+  overflow-x: auto;
+  border: 1px solid rgba(203, 213, 225, 0.9);
+  border-radius: 0.9rem;
+  background: #ffffff;
+}
+
+.ProseMirror table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  min-width: 120px;
+  border-right: 1px solid rgba(203, 213, 225, 0.9);
+  border-bottom: 1px solid rgba(203, 213, 225, 0.9);
+  padding: 0.8rem 0.95rem;
+  vertical-align: top;
+  text-align: left;
+}
+
+.ProseMirror th {
+  background: rgba(248, 250, 252, 0.96);
+  font-weight: 600;
+  color: rgba(51, 65, 85, 0.96);
+}
+
+.ProseMirror tr > :last-child {
+  border-right: none;
+}
+
+.ProseMirror tbody tr:last-child > * {
+  border-bottom: none;
+}
+
+.ProseMirror th p:first-child,
+.ProseMirror td p:first-child {
+  margin-top: 0;
+}
+
+.ProseMirror th p:last-child,
+.ProseMirror td p:last-child {
+  margin-bottom: 0;
+}
+
+.ProseMirror blockquote {
+  border-left: 4px solid rgba(147, 197, 253, 0.95);
+  background: rgba(239, 244, 255, 0.88);
+  padding: 1rem 1.25rem;
+  border-radius: 0 1rem 1rem 0;
+  color: rgba(71, 84, 103, 0.96);
+}
+
+.ProseMirror code {
+  background: rgba(47, 101, 246, 0.08);
+  border-radius: 0.5rem;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.92em;
+}
+
+.ProseMirror pre {
+  background: rgba(248, 250, 252, 0.96);
+  color: rgba(52, 64, 84, 0.96);
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  padding: 1rem;
+  border-radius: 1rem;
+  overflow-x: auto;
+}
+
+.ProseMirror pre code {
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}

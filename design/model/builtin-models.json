@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "protocols": [
+    "openai-compatible",
+    "anthropic-compatible"
+  ],
+  "providers": [
+    {
+      "providerId": "kimi",
+      "providerName": "Kimi",
+      "models": [
+        {
+          "presetId": "kimi-default",
+          "displayName": "Kimi",
+          "apiModel": "kimi-k2.5",
+          "protocol": "openai-compatible",
+          "endpoint": "https://api.moonshot.cn/v1",
+          "enabled": true
+        },
+        {
+          "presetId": "kimi-code-default",
+          "displayName": "Kimi-Code",
+          "apiModel": "kimi-for-coding",
+          "protocol": "anthropic-compatible",
+          "endpoint": "https://api.kimi.com/coding/v1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "providerId": "z-ai",
+      "providerName": "Z.AI",
+      "models": [
+        {
+          "presetId": "z-ai-glm-5",
+          "displayName": "GLM-5",
+          "apiModel": "glm-5",
+          "protocol": "openai-compatible",
+          "endpoint": "https://open.bigmodel.cn/api/paas/v4",
+          "enabled": true
+        },
+        {
+          "presetId": "z-ai-glm-4.6",
+          "displayName": "GLM-4.6",
+          "apiModel": "glm-4.6",
+          "protocol": "openai-compatible",
+          "endpoint": "https://open.bigmodel.cn/api/paas/v4",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "providerId": "minimax",
+      "providerName": "MiniMax",
+      "models": [
+        {
+          "presetId": "minimax-m2.5",
+          "displayName": "MiniMax M2.5",
+          "apiModel": "MiniMax-M2.5",
+          "protocol": "openai-compatible",
+          "endpoint": "https://api.minimax.chat/v1",
+          "enabled": true
+        },
+        {
+          "presetId": "minimax-m2.1",
+          "displayName": "MiniMax M2.1",
+          "apiModel": "MiniMax-M2.1",
+          "protocol": "openai-compatible",
+          "endpoint": "https://api.minimax.chat/v1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "providerId": "openai",
+      "providerName": "OpenAI",
+      "models": [
+        {
+          "presetId": "openai-gpt-5.4",
+          "displayName": "GPT-5.4 Pro",
+          "apiModel": "gpt-5.4-pro",
+          "protocol": "openai-compatible",
+          "endpoint": "https://api.openai.com/v1",
+          "enabled": true
+        },
+        {
+          "presetId": "openai-gpt-5.3",
+          "displayName": "GPT-5.3 Instant",
+          "apiModel": "gpt-5.3-instant",
+          "protocol": "openai-compatible",
+          "endpoint": "https://api.openai.com/v1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "providerId": "anthropic",
+      "providerName": "Anthropic",
+      "models": [
+        {
+          "presetId": "anthropic-claude-sonnet-4.6",
+          "displayName": "Claude Sonnet 4.6",
+          "apiModel": "claude-sonnet-4-6",
+          "protocol": "anthropic-compatible",
+          "endpoint": "https://api.anthropic.com/v1",
+          "enabled": true
+        },
+        {
+          "presetId": "anthropic-claude-opus-4.6",
+          "displayName": "Claude Opus 4.6",
+          "apiModel": "claude-opus-4-6",
+          "protocol": "anthropic-compatible",
+          "endpoint": "https://api.anthropic.com/v1",
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
