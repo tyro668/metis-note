@@ -61,7 +61,12 @@ jobs:
         run: |
           set -euo pipefail
           app_dir="$(find release -maxdepth 1 -type d -name 'MetisNote-darwin-*' | head -n 1)"
-          zip_path="${app_dir}.zip"
+          if [[ -z "${app_dir}" ]]; then
+            echo "Packaged macOS app was not found in release/." >&2
+            exit 1
+          fi
+          version_suffix="${GITHUB_REF_NAME:-${GITHUB_SHA::7}}"
+          zip_path="release/MetisNote-macOS-${version_suffix}.zip"
           rm -f "${zip_path}"
           ditto -c -k --sequesterRsrc --keepParent "${app_dir}" "${zip_path}"
           echo "path=${zip_path}" >> "$GITHUB_OUTPUT"
@@ -75,7 +80,8 @@ jobs:
           if (-not $appDir) {
             throw "Packaged Windows app was not found in release/."
           }
-          $zipPath = "$($appDir.FullName).zip"
+          $versionSuffix = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { $env:GITHUB_SHA.Substring(0, 7) }
+          $zipPath = Join-Path $PWD "release/MetisNote-Windows-$versionSuffix.zip"
           if (Test-Path $zipPath) {
             Remove-Item $zipPath -Force
           }
@@ -97,3 +103,26 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ steps.archive_windows.outputs.path }}
           if-no-files-found: error
+
+  publish-release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: metis-note-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*.zip
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
