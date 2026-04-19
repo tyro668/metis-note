@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { NoteEditor } from "@/components/note-editor"
 import { NoteList } from "@/components/note-list"
 import { NoteSidebar } from "@/components/note-sidebar"
@@ -209,9 +209,7 @@ export default function App() {
           return
         }
 
-        startTransition(() => {
-          setAllNotes(nextNotes)
-        })
+        setAllNotes(nextNotes)
 
         const nextSelectedId = pickVisibleNoteId(nextNotes, null, activeViewRef.current, searchValueRef.current)
         selectedIdRef.current = nextSelectedId
@@ -268,9 +266,7 @@ export default function App() {
         lastPersistedSnapshotRef.current = noteSnapshot(note)
         plainTextRef.current = note?.plainText ?? ""
 
-        startTransition(() => {
-          setDraftNote(note)
-        })
+        setDraftNote(note)
 
         setLastSavedAt(note?.updatedAt ?? null)
         setErrorMessage(null)
@@ -401,9 +397,7 @@ export default function App() {
     const nextNotes = await window.metisNote.notes.list()
     const previousSelectedId = selectedIdRef.current
 
-    startTransition(() => {
-      setAllNotes(nextNotes)
-    })
+    setAllNotes(nextNotes)
 
     const nextSelectedId = pickVisibleNoteId(
       nextNotes,
@@ -460,8 +454,23 @@ export default function App() {
       plainTextRef.current = saved.plainText
       setLastSavedAt(saved.updatedAt)
       setErrorMessage(null)
-      draftRef.current = saved
-      setDraftNote((current) => (current && current.id === saved.id ? saved : current))
+      setDraftNote((current) => {
+        if (!current || current.id !== saved.id) {
+          return current
+        }
+
+        // Preserve the existing content reference to avoid triggering a
+        // ProseMirror setContent call when the content hasn't actually changed.
+        const contentUnchanged = JSON.stringify(current.content) === JSON.stringify(saved.content)
+
+        const merged = {
+          ...saved,
+          content: contentUnchanged ? current.content : saved.content,
+        }
+
+        draftRef.current = merged
+        return merged
+      })
       setAllNotes((current) => upsertSummary(current, saved))
       return saved
     } catch (error) {
