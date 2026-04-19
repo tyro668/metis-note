@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "metisNote": {
+    "github": {
+      "owner": "tyro668",
+      "repo": "metis-note"
+    }
+  },
   "description": "Local-first desktop notes built with Electron, React, Tailwind, shadcn, and TipTap.",
   "main": "dist-electron/index.js",
   "scripts": {

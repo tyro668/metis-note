@@ -30,6 +30,37 @@ export interface AppMessages {
         light: string
         dark: string
       }
+      update: {
+        title: string
+        description: string
+        currentVersionLabel: string
+        latestVersionLabel: string
+        latestVersionUnknown: string
+        notChecked: string
+        upToDate: string
+        updateAvailable: string
+        unsupported: string
+        checkButton: string
+        checkingButton: string
+        downloadButton: string
+        downloadingButton: string
+        openReleaseButton: string
+        publishedAt: (value: string) => string
+        notices: {
+          upToDate: (version: string) => string
+          available: (version: string) => string
+          downloaded: (fileName: string) => string
+          releaseOpened: string
+        }
+        errors: {
+          loadFailed: string
+          checkFailed: string
+          downloadFailed: string
+          releaseOpenFailed: string
+          unsupportedPlatform: string
+          missingAsset: string
+        }
+      }
       cards: {
         localFirstTitle: string
         localFirstDescription: string
@@ -492,6 +523,37 @@ const messages = {
           light: "亮色",
           dark: "暗色",
         },
+        update: {
+          title: "应用更新",
+          description: "从 GitHub Releases 检查并下载适用于当前系统的新版本。下载完成后，应用会打开文件所在位置，按系统方式安装替换即可。",
+          currentVersionLabel: "当前版本",
+          latestVersionLabel: "最新版本",
+          latestVersionUnknown: "尚未获取",
+          notChecked: "尚未检查",
+          upToDate: "已是最新",
+          updateAvailable: "发现新版本",
+          unsupported: "当前平台暂不支持在线更新",
+          checkButton: "检查更新",
+          checkingButton: "检查中...",
+          downloadButton: "下载更新包",
+          downloadingButton: "下载中...",
+          openReleaseButton: "查看发布页",
+          publishedAt: (value) => `发布时间：${value}`,
+          notices: {
+            upToDate: (version) => `当前已经是最新版本：${version}`,
+            available: (version) => `检测到新版本：${version}`,
+            downloaded: (fileName) => `更新包已下载完成：${fileName}`,
+            releaseOpened: "已打开 GitHub 发布页",
+          },
+          errors: {
+            loadFailed: "加载当前版本信息失败",
+            checkFailed: "检查更新失败",
+            downloadFailed: "下载更新包失败",
+            releaseOpenFailed: "打开发布页失败",
+            unsupportedPlatform: "当前平台暂不支持在线更新",
+            missingAsset: "当前平台没有可用的更新包",
+          },
+        },
         cards: {
           localFirstTitle: "本地优先工作区",
           localFirstDescription: "笔记和模型配置默认保存在当前设备，本地离线时也可以继续访问和编辑文档。",
@@ -952,6 +1014,37 @@ const messages = {
         system: "System",
         light: "Light",
         dark: "Dark",
+      },
+      update: {
+        title: "Application Updates",
+        description: "Check GitHub Releases and download the latest package for the current platform. After the download finishes, the app opens the file location so you can install it with the system workflow.",
+        currentVersionLabel: "Current version",
+        latestVersionLabel: "Latest version",
+        latestVersionUnknown: "Not checked yet",
+        notChecked: "Not checked",
+        upToDate: "Up to date",
+        updateAvailable: "Update available",
+        unsupported: "Online updates are not available on this platform",
+        checkButton: "Check for updates",
+        checkingButton: "Checking...",
+        downloadButton: "Download Update",
+        downloadingButton: "Downloading...",
+        openReleaseButton: "Open Release Page",
+        publishedAt: (value) => `Published: ${value}`,
+        notices: {
+          upToDate: (version) => `This installation is already up to date: ${version}`,
+          available: (version) => `New version available: ${version}`,
+          downloaded: (fileName) => `Downloaded update package: ${fileName}`,
+          releaseOpened: "Opened the GitHub releases page",
+        },
+        errors: {
+          loadFailed: "Failed to load the current version information",
+          checkFailed: "Failed to check for updates",
+          downloadFailed: "Failed to download the update package",
+          releaseOpenFailed: "Failed to open the release page",
+          unsupportedPlatform: "Online updates are not available on this platform",
+          missingAsset: "No update package is available for this platform",
+        },
       },
       cards: {
         localFirstTitle: "Local-first workspace",

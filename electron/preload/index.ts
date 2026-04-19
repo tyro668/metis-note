@@ -12,6 +12,7 @@ import type {
 } from "../../src/shared/llm"
 import type { CreateNoteInput, NoteLinkResolutionMap, NoteSummary, UpdateNoteInput } from "../../src/shared/notes"
 import type { SaveTemplateInput, TemplateDocument, TemplateSummary } from "../../src/shared/templates"
+import type { AppUpdateCheckResult, AppUpdateCurrentInfo, AppUpdateDownloadResult } from "../../src/shared/updates"
 import type { NoteVersionContent, VersionSummary } from "../../src/shared/versions"
 
 function normalizeAssetPayload(payload: RendererAssetImportPayload) {
@@ -117,5 +118,11 @@ contextBridge.exposeInMainWorld("metisNote", {
         ipcRenderer.removeListener("llm:streamError", handler)
       }
     },
+  },
+  updates: {
+    getCurrentInfo: () => ipcRenderer.invoke("updates:getCurrentInfo") as Promise<AppUpdateCurrentInfo>,
+    check: () => ipcRenderer.invoke("updates:check") as Promise<AppUpdateCheckResult>,
+    downloadLatest: () => ipcRenderer.invoke("updates:downloadLatest") as Promise<AppUpdateDownloadResult>,
+    openReleasePage: (releasePageUrl?: string) => ipcRenderer.invoke("updates:openReleasePage", releasePageUrl) as Promise<void>,
   },
 })

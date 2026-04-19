@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react"
-import { ChevronDown, LayoutTemplate, Plus, Settings2, Shield, Sparkles, Trash2 } from "lucide-react"
+import { ChevronDown, Download, ExternalLink, LayoutTemplate, Plus, RefreshCw, Settings2, Shield, Sparkles, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { TemplateSettingsSection } from "@/components/template-settings-section"
@@ -35,6 +35,7 @@ import {
 } from "@/shared/llm"
 import type { TemplateDialogValues } from "@/components/template-dialog"
 import type { TemplateSummary } from "@/shared/templates"
+import type { AppUpdateCheckResult, AppUpdateCurrentInfo } from "@/shared/updates"
 
 type SettingsSection = "general" | "security" | "intelligence" | "templates"
 type LocalCatalogEntry = {
@@ -117,6 +118,14 @@ function formatBytes(value: number | null | undefined) {
   const formatted = size >= 10 || unitIndex === 0 ? size.toFixed(0) : size.toFixed(1)
 
   return `${formatted} ${units[unitIndex]}`
+}
+
+function formatUpdateVersion(current: AppUpdateCurrentInfo | null) {
+  if (!current) {
+    return "—"
+  }
+
+  return current.releaseTag ?? `v${current.version}`
 }
 
 function isManagedLocalBusy(status: ManagedLocalModelStatus | null | undefined) {
@@ -777,6 +786,7 @@ export function SettingsPage() {
   const settingsMessages = messages.settings
   const intelligenceMessages = settingsMessages.intelligence
   const templateMessages = settingsMessages.templates
+  const updateMessages = settingsMessages.general.update
   const localMessages = intelligenceMessages.local
   const [activeSection, setActiveSection] = useState<SettingsSection>("intelligence")
   const [models, setModels] = useState<LlmModelConfig[]>([])
@@ -785,6 +795,11 @@ export function SettingsPage() {
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null)
   const [templateFeedback, setTemplateFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null)
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateCheckResult | null>(null)
+  const [isLoadingUpdateInfo, setIsLoadingUpdateInfo] = useState(false)
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
+  const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false)
+  const [updateFeedback, setUpdateFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<LlmModelConfig | null>(null)
   const [dialogError, setDialogError] = useState<string | null>(null)
@@ -883,6 +898,108 @@ export function SettingsPage() {
     }
   }
 
+  async function loadCurrentUpdateInfo() {
+    setIsLoadingUpdateInfo(true)
+
+    try {
+      const current = await window.metisNote.updates.getCurrentInfo()
+      setUpdateInfo((previous) => {
+        if (!previous) {
+          return {
+            current,
+            latest: null,
+            updateAvailable: false,
+          }
+        }
+
+        return {
+          ...previous,
+          current,
+        }
+      })
+    } catch (error) {
+      setUpdateFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : settingsMessages.general.update.errors.loadFailed,
+      })
+    } finally {
+      setIsLoadingUpdateInfo(false)
+    }
+  }
+
+  async function handleCheckForUpdates() {
+    setIsCheckingUpdates(true)
+
+    try {
+      const result = await window.metisNote.updates.check()
+      setUpdateInfo(result)
+      setUpdateFeedback({
+        tone: "success",
+        message: result.updateAvailable && result.latest
+          ? settingsMessages.general.update.notices.available(result.latest.tagName)
+          : settingsMessages.general.update.notices.upToDate(formatUpdateVersion(result.current)),
+      })
+    } catch (error) {
+      setUpdateFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : settingsMessages.general.update.errors.checkFailed,
+      })
+    } finally {
+      setIsCheckingUpdates(false)
+    }
+  }
+
+  async function handleDownloadUpdate() {
+    const updateMessages = settingsMessages.general.update
+    if (!updateInfo?.current.supported) {
+      setUpdateFeedback({
+        tone: "error",
+        message: updateMessages.errors.unsupportedPlatform,
+      })
+      return
+    }
+
+    if (!updateInfo?.latest?.asset) {
+      setUpdateFeedback({
+        tone: "error",
+        message: updateMessages.errors.missingAsset,
+      })
+      return
+    }
+
+    setIsDownloadingUpdate(true)
+
+    try {
+      const result = await window.metisNote.updates.downloadLatest()
+      setUpdateFeedback({
+        tone: "success",
+        message: updateMessages.notices.downloaded(result.assetName),
+      })
+    } catch (error) {
+      setUpdateFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : updateMessages.errors.downloadFailed,
+      })
+    } finally {
+      setIsDownloadingUpdate(false)
+    }
+  }
+
+  async function handleOpenReleasePage() {
+    try {
+      await window.metisNote.updates.openReleasePage(updateInfo?.latest?.htmlUrl)
+      setUpdateFeedback({
+        tone: "success",
+        message: settingsMessages.general.update.notices.releaseOpened,
+      })
+    } catch (error) {
+      setUpdateFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : settingsMessages.general.update.errors.releaseOpenFailed,
+      })
+    }
+  }
+
   useEffect(() => {
     void loadModels()
   }, [])
@@ -908,6 +1025,14 @@ export function SettingsPage() {
 
     void loadTemplates()
   }, [activeSection])
+
+  useEffect(() => {
+    if (activeSection !== "general" || updateInfo) {
+      return
+    }
+
+    void loadCurrentUpdateInfo()
+  }, [activeSection, updateInfo])
 
   async function handleSubmitRemoteModel(payload: SaveLlmModelInput, id?: string) {
     setIsSubmittingDialog(true)
@@ -1091,6 +1216,18 @@ export function SettingsPage() {
     }
   }
 
+  const currentUpdateVersion = formatUpdateVersion(updateInfo?.current ?? null)
+  const latestUpdateVersion = updateInfo?.latest?.tagName ?? updateMessages.latestVersionUnknown
+  const updateStatusLabel = !updateInfo
+    ? isLoadingUpdateInfo
+      ? updateMessages.checkingButton
+      : updateMessages.notChecked
+    : !updateInfo.current.supported
+      ? updateMessages.unsupported
+      : updateInfo.updateAvailable
+        ? updateMessages.updateAvailable
+        : updateMessages.upToDate
+
   return (
     <>
       <div className="flex h-full min-h-0 flex-1 overflow-hidden bg-white dark:bg-[#020817]">
@@ -1140,6 +1277,95 @@ export function SettingsPage() {
                       title={settingsMessages.general.cards.languageTitle}
                       description={settingsMessages.general.cards.languageDescription}
                     />
+                    <div className="rounded-xl border border-[#e7ebf1] bg-white px-5 py-5 dark:border-[#243041] dark:bg-[#101827] xl:col-span-2">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-[#1f2937] dark:text-slate-100">
+                            {updateMessages.title}
+                          </h3>
+                          <p className="mt-2 max-w-3xl text-sm leading-7 text-[#667085] dark:text-slate-400">
+                            {updateMessages.description}
+                          </p>
+                        </div>
+                        <Badge
+                          className="rounded-full px-3 py-1 text-[11px] tracking-[0.04em]"
+                          variant={updateInfo?.updateAvailable ? "primary" : "subtle"}
+                        >
+                          {updateStatusLabel}
+                        </Badge>
+                      </div>
+
+                      {updateFeedback ? (
+                        <div
+                          className={cn(
+                            "mt-4 rounded-xl border px-4 py-3 text-sm",
+                            updateFeedback.tone === "success"
+                              ? "border-[rgba(18,183,106,0.24)] bg-[rgba(18,183,106,0.08)] text-[rgba(2,122,72,0.96)]"
+                              : "border-[rgba(180,35,24,0.2)] bg-[rgba(180,35,24,0.06)] text-[rgba(180,35,24,0.96)]",
+                          )}
+                        >
+                          {updateFeedback.message}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <div className="rounded-xl border border-[#e7ebf1] bg-[#f8fafc] px-4 py-3 dark:border-[#243041] dark:bg-[#0b1220]">
+                          <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3] dark:text-slate-500">
+                            {updateMessages.currentVersionLabel}
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-[#1f3045] dark:text-slate-100">
+                            {currentUpdateVersion}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-[#e7ebf1] bg-[#f8fafc] px-4 py-3 dark:border-[#243041] dark:bg-[#0b1220]">
+                          <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3] dark:text-slate-500">
+                            {updateMessages.latestVersionLabel}
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-[#1f3045] dark:text-slate-100">
+                            {latestUpdateVersion}
+                          </div>
+                          {updateInfo?.latest?.publishedAt ? (
+                            <div className="mt-2 text-xs text-[#667085] dark:text-slate-400">
+                              {updateMessages.publishedAt(new Date(updateInfo.latest.publishedAt).toLocaleString())}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          className="h-10 rounded-xl px-4 text-sm font-medium"
+                          variant="outline"
+                          onClick={() => {
+                            void handleCheckForUpdates()
+                          }}
+                          disabled={isCheckingUpdates || isDownloadingUpdate}
+                        >
+                          <RefreshCw className={cn("h-4 w-4", isCheckingUpdates && "animate-spin")} />
+                          {isCheckingUpdates ? updateMessages.checkingButton : updateMessages.checkButton}
+                        </Button>
+                        <Button
+                          className="h-10 rounded-xl px-4 text-sm font-medium"
+                          onClick={() => {
+                            void handleDownloadUpdate()
+                          }}
+                          disabled={isCheckingUpdates || isDownloadingUpdate || !updateInfo?.latest?.asset}
+                        >
+                          <Download className="h-4 w-4" />
+                          {isDownloadingUpdate ? updateMessages.downloadingButton : updateMessages.downloadButton}
+                        </Button>
+                        <Button
+                          className="h-10 rounded-xl px-4 text-sm font-medium"
+                          variant="ghost"
+                          onClick={() => {
+                            void handleOpenReleasePage()
+                          }}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          {updateMessages.openReleaseButton}
+                        </Button>
+                      </div>
+                    </div>
                     <div className="rounded-xl border border-[#e7ebf1] bg-white px-5 py-5 dark:border-[#243041] dark:bg-[#101827] xl:col-span-2">
                       <h3 className="text-base font-semibold text-[#1f2937] dark:text-slate-100">
                         {settingsMessages.general.appearance.title}

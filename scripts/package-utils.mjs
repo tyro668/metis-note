@@ -79,8 +79,12 @@ function resolveInstalledPackageDir(packageName, fromPath) {
 }
 
 export async function readPackageVersion(rootDir) {
-  const packageJson = JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf-8"))
+  const packageJson = await readPackageManifest(rootDir)
   return packageJson.version
+}
+
+async function readPackageManifest(rootDir) {
+  return JSON.parse(await readFile(path.join(rootDir, "package.json"), "utf-8"))
 }
 
 export async function copyProductionNodeModules(rootDir, appResourcesDir) {
@@ -122,7 +126,7 @@ export async function copyProductionNodeModules(rootDir, appResourcesDir) {
   }
 }
 
-export async function writeRuntimePackageJson(appResourcesDir, version) {
+export async function writeRuntimePackageJson(appResourcesDir, version, packageManifest) {
   const runtimePackageJson = {
     name: "metis-note",
     productName: appName,
@@ -130,6 +134,10 @@ export async function writeRuntimePackageJson(appResourcesDir, version) {
     description: "Local-first desktop notes built with Electron, React, Tailwind, shadcn, and TipTap.",
     main: "dist-electron/index.js",
     type: "module",
+    metisNote: {
+      ...(packageManifest.metisNote ?? {}),
+      releaseTag: process.env.GITHUB_REF_NAME ?? null,
+    },
   }
 
   await writeFile(path.join(appResourcesDir, "package.json"), JSON.stringify(runtimePackageJson, null, 2), "utf-8")
@@ -152,10 +160,11 @@ async function copyRuntimeAssets(rootDir, appResourcesDir) {
 }
 
 export async function copyAppPayload(rootDir, appResourcesDir, version) {
+  const packageManifest = await readPackageManifest(rootDir)
   await mkdir(appResourcesDir, { recursive: true })
   await copyDirectory(path.join(rootDir, "dist"), path.join(appResourcesDir, "dist"))
   await copyDirectory(path.join(rootDir, "dist-electron"), path.join(appResourcesDir, "dist-electron"))
   await copyRuntimeAssets(rootDir, appResourcesDir)
   await copyProductionNodeModules(rootDir, appResourcesDir)
-  await writeRuntimePackageJson(appResourcesDir, version)
+  await writeRuntimePackageJson(appResourcesDir, version, packageManifest)
 }

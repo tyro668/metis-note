@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url"
 import { app, BrowserWindow, protocol, shell } from "electron"
 import { ASSET_PROTOCOL } from "../../src/shared/assets"
 import { APP_NAME, resolveLocale } from "../../src/shared/i18n"
+import { registerAppUpdateHandlers } from "./ipc/app-updates"
 import { registerAssetHandlers } from "./ipc/assets"
 import { registerLlmInferenceHandlers } from "./ipc/llm-inference"
 import { registerLlmModelHandlers } from "./ipc/llm-models"
@@ -11,6 +12,7 @@ import { registerNoteHandlers } from "./ipc/notes"
 import { registerTemplateHandlers } from "./ipc/templates"
 import { registerVersionHandlers } from "./ipc/versions"
 import { AssetStore } from "./services/asset-store"
+import { AppUpdaterService } from "./services/app-updater"
 import { LlmInferenceService } from "./services/llm-inference"
 import { LocalModelManager } from "./services/local-model-manager"
 import { LlmModelStore } from "./services/llm-model-store"
@@ -126,6 +128,7 @@ async function bootstrap() {
   const settingsBaseDir = path.join(app.getPath("userData"), "metis-note-settings")
 
   const noteLinkStore = new NoteLinkStore(notesBaseDir)
+  const appUpdater = new AppUpdaterService()
   const assetStore = new AssetStore(notesBaseDir, locale)
   const versionStore = new VersionStore(notesBaseDir, locale)
   const templateStore = new TemplateStore(settingsBaseDir, locale, assetStore)
@@ -148,6 +151,7 @@ async function bootstrap() {
   registerVersionHandlers(store, versionStore, locale)
   registerTemplateHandlers(templateStore, store, locale)
   registerAssetHandlers(assetStore)
+  registerAppUpdateHandlers(appUpdater)
   registerLlmModelHandlers(llmModelStore, localModelManager)
   registerLlmInferenceHandlers(llmInference)
   await createMainWindow()

@@ -19,6 +19,7 @@ import type {
   UpdateNoteInput,
 } from "./shared/notes"
 import type { SaveTemplateInput, TemplateDocument, TemplateSummary } from "./shared/templates"
+import type { AppUpdateCheckResult, AppUpdateCurrentInfo, AppUpdateDownloadResult } from "./shared/updates"
 import type { NoteVersionContent, VersionSummary } from "./shared/versions"
 
 declare global {
@@ -77,6 +78,12 @@ declare global {
         onStreamChunk: (callback: (streamId: string, chunk: string) => void) => () => void
         onStreamEnd: (callback: (streamId: string) => void) => () => void
         onStreamError: (callback: (streamId: string, error: string) => void) => () => void
+      }
+      updates: {
+        getCurrentInfo: () => Promise<AppUpdateCurrentInfo>
+        check: () => Promise<AppUpdateCheckResult>
+        downloadLatest: () => Promise<AppUpdateDownloadResult>
+        openReleasePage: (releasePageUrl?: string) => Promise<void>
       }
     }
   }
