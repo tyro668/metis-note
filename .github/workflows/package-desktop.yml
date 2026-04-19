@@ -1,0 +1,93 @@
+name: Package Desktop App
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Package on ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS
+            package_script: node ./scripts/package-mac.mjs
+            artifact_name: metis-note-macos
+          - os: windows-latest
+            label: Windows
+            package_script: node ./scripts/package-win.mjs
+            artifact_name: metis-note-windows
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build app
+        run: npm run build
+
+      - name: Package desktop app
+        run: ${{ matrix.package_script }}
+
+      - name: Create macOS archive
+        if: runner.os == 'macOS'
+        id: archive_macos
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_dir="$(find release -maxdepth 1 -type d -name 'MetisNote-darwin-*' | head -n 1)"
+          zip_path="${app_dir}.zip"
+          rm -f "${zip_path}"
+          ditto -c -k --sequesterRsrc --keepParent "${app_dir}" "${zip_path}"
+          echo "path=${zip_path}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Windows archive
+        if: runner.os == 'Windows'
+        id: archive_windows
+        shell: pwsh
+        run: |
+          $appDir = Get-ChildItem -Path release -Directory | Where-Object { $_.Name -like 'MetisNote-win32-*' } | Select-Object -First 1
+          if (-not $appDir) {
+            throw "Packaged Windows app was not found in release/."
+          }
+          $zipPath = "$($appDir.FullName).zip"
+          if (Test-Path $zipPath) {
+            Remove-Item $zipPath -Force
+          }
+          Compress-Archive -Path $appDir.FullName -DestinationPath $zipPath -Force
+          "path=$zipPath" >> $env:GITHUB_OUTPUT
+
+      - name: Upload macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ steps.archive_macos.outputs.path }}
+          if-no-files-found: error
+
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ steps.archive_windows.outputs.path }}
+          if-no-files-found: error
