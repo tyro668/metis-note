@@ -19,9 +19,17 @@ export interface AppMessages {
       general: string
       security: string
       intelligence: string
+      templates: string
     }
     general: {
       title: string
+      appearance: {
+        title: string
+        description: string
+        system: string
+        light: string
+        dark: string
+      }
       cards: {
         localFirstTitle: string
         localFirstDescription: string
@@ -155,11 +163,58 @@ export interface AppMessages {
         }
       }
     }
+    templates: {
+      title: string
+      description: string
+      loading: string
+      empty: string
+      builtInBadge: string
+      customBadge: string
+      customCategoryFallback: string
+      actions: {
+        edit: string
+        delete: string
+      }
+      dialog: {
+        saveCurrentTitle: string
+        editTitle: string
+        close: string
+        save: string
+        cancel: string
+      }
+      picker: {
+        title: string
+        create: string
+      }
+      fields: {
+        title: string
+        description: string
+        category: string
+      }
+      placeholders: {
+        title: string
+        description: string
+        category: string
+      }
+      notices: {
+        updated: (title: string) => string
+        deleted: (title: string) => string
+      }
+      errors: {
+        loadFailed: string
+        createFailed: string
+        createNoteFailed: string
+        notFound: string
+        updateFailed: string
+        deleteFailed: string
+      }
+    }
   }
   tree: {
     titleAll: string
     titleFavorites: string
     titleTrash: string
+    pinnedTitle: string
     emptyAll: string
     emptyFavorites: string
     emptyTrash: string
@@ -167,6 +222,8 @@ export interface AppMessages {
     noResults: string
     searchPlaceholder: string
     createButton: string
+    importMenuButton: string
+    createFromTemplateButton: string
     importButton: string
     countLabel: (count: number) => string
     restoreTitle: string
@@ -186,7 +243,10 @@ export interface AppMessages {
     editButton: string
     updateButton: string
     moreButton: string
+    saveAsTemplateAction: string
     exportAction: string
+    exportPdfAction: string
+    printAction: string
     deleteAction: string
     deleteForeverAction: string
     confirmTitleButton: string
@@ -197,6 +257,88 @@ export interface AppMessages {
     trashedReadonlyNotice: string
     emptyTitle: string
     emptyDescription: string
+    formatting: {
+      bold: string
+      italic: string
+      underline: string
+      strike: string
+      inlineCode: string
+      highlight: string
+      clearHighlight: string
+      more: string
+      superscript: string
+      subscript: string
+      bulletList: string
+      orderedList: string
+      alignLeft: string
+      alignCenter: string
+      alignRight: string
+    }
+    commands: {
+      heading1: string
+      heading2: string
+      heading3: string
+      taskList: string
+      table: string
+      image: string
+      file: string
+      details: string
+      math: string
+      toc: string
+      codeBlock: string
+      blockquote: string
+      horizontalRule: string
+    }
+    commandDescriptions: {
+      heading1: string
+      heading2: string
+      heading3: string
+      taskList: string
+      table: string
+      image: string
+      file: string
+      details: string
+      math: string
+      toc: string
+      codeBlock: string
+      blockquote: string
+      horizontalRule: string
+    }
+    commandGroups: {
+      ai: string
+      links: string
+      structure: string
+      lists: string
+      blocks: string
+      navigation: string
+    }
+    codeBlock: {
+      copyLabel: string
+      copiedLabel: string
+      languageLabel: string
+      languagePlaceholder: string
+    }
+    toc: {
+      title: string
+      empty: string
+      expand: string
+      collapse: string
+    }
+    assets: {
+      imageFilterName: string
+      invalidImage: string
+      imageTooLarge: (limit: string) => string
+      fileTooLarge: (limit: string) => string
+      noteAssetLimitExceeded: (limit: string) => string
+      assetNotFound: string
+      importImageFailed: string
+      importFileFailed: string
+      openAttachment: string
+      previewImage: string
+      replaceImage: string
+      closeLightbox: string
+      removeAsset: string
+    }
     aiWrite: {
       slashLabel: string
       slashDescription: string
@@ -224,6 +366,29 @@ export interface AppMessages {
       backlinksSummary: (count: number) => string
       backlinksExpand: string
       backlinksCollapse: string
+    }
+    versionHistory: {
+      button: string
+      title: string
+      current: string
+      currentMeta: (wordCount: number) => string
+      preview: string
+      restore: string
+      close: string
+      empty: string
+      loading: string
+      exitPreview: string
+      viewCurrent: string
+      previewDescription: string
+      previewing: (time: string) => string
+      errors: {
+        versionNotFound: string
+        restoreFailed: string
+      }
+    }
+    focusMode: {
+      enter: string
+      exit: string
     }
   }
   notes: {
@@ -256,8 +421,10 @@ export interface AppMessages {
   dialogs: {
     importTitle: string
     exportTitle: string
+    exportPdfTitle: string
     markdownTextFilterName: string
     markdownFilterName: string
+    pdfFilterName: string
     confirmMoveToTrash: (title: string) => string
     confirmDeleteForever: (title: string) => string
   }
@@ -266,10 +433,15 @@ export interface AppMessages {
     createdChild: (title: string) => string
     imported: (title: string) => string
     exported: (path: string) => string
+    exportedPdf: (path: string) => string
     duplicated: (title: string) => string
     movedToTrash: (title: string) => string
     restored: (title: string) => string
     deletedForever: (title: string) => string
+    createdFromTemplate: (title: string) => string
+    templateSaved: (title: string) => string
+    versionRestored: (title: string) => string
+    printStarted: string
     pinned: string
     unpinned: string
   }
@@ -280,10 +452,13 @@ export interface AppMessages {
     createFailed: string
     importFailed: string
     exportFailed: string
+    exportPdfFailed: string
     duplicateFailed: string
     moveToTrashFailed: string
     restoreFailed: string
+    restoreVersionFailed: string
     deleteForeverFailed: string
+    printFailed: string
     toggleFavoriteFailed: string
     noteNotFound: (id: string) => string
   }
@@ -306,9 +481,17 @@ const messages = {
         general: "通用设置",
         security: "安全设置",
         intelligence: "智能设置",
+        templates: "模板",
       },
       general: {
         title: "通用设置",
+        appearance: {
+          title: "外观模式",
+          description: "选择跟随系统、亮色或暗色模式。暗色模式会同步应用到编辑器和代码块主题。",
+          system: "跟随系统",
+          light: "亮色",
+          dark: "暗色",
+        },
         cards: {
           localFirstTitle: "本地优先工作区",
           localFirstDescription: "笔记和模型配置默认保存在当前设备，本地离线时也可以继续访问和编辑文档。",
@@ -442,18 +625,67 @@ const messages = {
           },
         },
       },
+      templates: {
+        title: "文档模板",
+        description: "集中管理内置模板和你保存的自定义模板。新建文档时可以直接从模板创建，保持结构与内容风格一致。",
+        loading: "正在加载模板...",
+        empty: "还没有可用模板。",
+        builtInBadge: "内置",
+        customBadge: "自定义",
+        customCategoryFallback: "我的模板",
+        actions: {
+          edit: "编辑",
+          delete: "删除",
+        },
+        dialog: {
+          saveCurrentTitle: "保存为模板",
+          editTitle: "编辑模板",
+          close: "关闭",
+          save: "保存",
+          cancel: "取消",
+        },
+        picker: {
+          title: "从模板创建文档",
+          create: "创建文档",
+        },
+        fields: {
+          title: "模板标题",
+          description: "模板描述",
+          category: "模板分类",
+        },
+        placeholders: {
+          title: "请输入模板标题",
+          description: "简要说明这个模板适合什么场景",
+          category: "例如：会议、周报、知识卡片",
+        },
+        notices: {
+          updated: (title) => `已更新模板：${title}`,
+          deleted: (title) => `已删除模板：${title}`,
+        },
+        errors: {
+          loadFailed: "加载模板失败",
+          createFailed: "保存模板失败",
+          createNoteFailed: "从模板创建文档失败",
+          notFound: "未找到模板",
+          updateFailed: "更新模板失败",
+          deleteFailed: "删除模板失败",
+        },
+      },
     },
     tree: {
-      titleAll: "文档树",
+      titleAll: "目录",
       titleFavorites: "收藏",
       titleTrash: "回收站",
+      pinnedTitle: "置顶",
       emptyAll: "还没有文档，点击右上角创建第一篇。",
       emptyFavorites: "还没有收藏内容，点击文档节点右侧的星标可以快速加入收藏。",
       emptyTrash: "回收站暂时为空。",
       loading: "正在载入文档树...",
       noResults: "没有找到匹配的文档。",
       searchPlaceholder: "搜索文档...",
-      createButton: "新建",
+      createButton: "添加文档",
+      importMenuButton: "导入 / 模板",
+      createFromTemplateButton: "从模板创建",
       importButton: "导入 Markdown",
       countLabel: (count) => `${count} 篇文档`,
       restoreTitle: "恢复",
@@ -471,9 +703,12 @@ const messages = {
       loading: "正在载入文档内容...",
       titlePlaceholder: "给这篇笔记起个名字",
       editButton: "编辑",
-      updateButton: "更新",
+      updateButton: "保存",
       moreButton: "更多",
-      exportAction: "导出",
+      saveAsTemplateAction: "保存为模板",
+      exportAction: "导出 Markdown",
+      exportPdfAction: "导出 PDF",
+      printAction: "打印",
       deleteAction: "删除",
       deleteForeverAction: "彻底删除",
       confirmTitleButton: "确认",
@@ -484,6 +719,88 @@ const messages = {
       trashedReadonlyNotice: "这篇笔记目前位于回收站，内容已切换为只读。你可以恢复后继续编辑，或者直接彻底删除。",
       emptyTitle: "选择一篇文档开始",
       emptyDescription: "左侧文档树用于浏览嵌套文档，右侧可以预览或编辑正文内容。",
+      formatting: {
+        bold: "加粗",
+        italic: "斜体",
+        underline: "下划线",
+        strike: "删除线",
+        inlineCode: "行内代码",
+        highlight: "高亮",
+        clearHighlight: "清除高亮",
+        more: "更多格式",
+        superscript: "上标",
+        subscript: "下标",
+        bulletList: "无序列表",
+        orderedList: "有序列表",
+        alignLeft: "左对齐",
+        alignCenter: "居中",
+        alignRight: "右对齐",
+      },
+      commands: {
+        heading1: "一级标题",
+        heading2: "二级标题",
+        heading3: "三级标题",
+        taskList: "任务清单",
+        table: "表格",
+        image: "图片",
+        file: "附件",
+        details: "折叠块",
+        math: "数学公式",
+        toc: "目录",
+        codeBlock: "代码块",
+        blockquote: "引用块",
+        horizontalRule: "分割线",
+      },
+      commandDescriptions: {
+        heading1: "插入或切换为一级标题",
+        heading2: "插入或切换为二级标题",
+        heading3: "插入或切换为三级标题",
+        taskList: "插入带复选框的任务列表",
+        table: "插入一个 3 x 3 表格",
+        image: "选择并插入一张图片",
+        file: "选择并插入一个附件文件",
+        details: "插入可折叠的内容块",
+        math: "插入一段行内数学公式",
+        toc: "打开目录面板并快速定位标题",
+        codeBlock: "插入带语法高亮的代码块",
+        blockquote: "插入引用块",
+        horizontalRule: "插入内容分割线",
+      },
+      commandGroups: {
+        ai: "AI",
+        links: "链接",
+        structure: "结构",
+        lists: "列表",
+        blocks: "内容块",
+        navigation: "导航",
+      },
+      codeBlock: {
+        copyLabel: "复制代码",
+        copiedLabel: "已复制",
+        languageLabel: "语言",
+        languagePlaceholder: "plaintext",
+      },
+      toc: {
+        title: "目录",
+        empty: "还没有可显示的标题",
+        expand: "展开",
+        collapse: "收起",
+      },
+      assets: {
+        imageFilterName: "图片",
+        invalidImage: "无法识别这张图片，请选择 PNG、JPG、GIF、WebP、BMP、SVG 或 AVIF 文件",
+        imageTooLarge: (limit) => `单张图片不能超过 ${limit}`,
+        fileTooLarge: (limit) => `单个附件不能超过 ${limit}`,
+        noteAssetLimitExceeded: (limit) => `这篇笔记的图片和附件总大小不能超过 ${limit}`,
+        assetNotFound: "找不到对应的资源文件",
+        importImageFailed: "导入图片失败",
+        importFileFailed: "导入附件失败",
+        openAttachment: "打开附件",
+        previewImage: "查看图片",
+        replaceImage: "替换图片",
+        closeLightbox: "关闭图片预览",
+        removeAsset: "删除资源",
+      },
       aiWrite: {
         slashLabel: "AI 帮写",
         slashDescription: "AI 根据当前文档上下文继续写作",
@@ -511,6 +828,29 @@ const messages = {
         backlinksSummary: (count) => `${count} 篇文档引用了此文档`,
         backlinksExpand: "展开",
         backlinksCollapse: "收起",
+      },
+      versionHistory: {
+        button: "历史版本",
+        title: "历史版本",
+        current: "当前版本",
+        currentMeta: (wordCount) => `${wordCount} 字`,
+        preview: "预览中",
+        restore: "恢复到此版本",
+        close: "关闭",
+        empty: "还没有可恢复的历史版本。",
+        loading: "正在加载历史版本...",
+        exitPreview: "退出预览",
+        viewCurrent: "查看当前版本",
+        previewDescription: "当前正在查看历史快照内容，编辑区已切换为只读预览。",
+        previewing: (time) => `正在预览 ${time} 的历史版本`,
+        errors: {
+          versionNotFound: "找不到该历史版本",
+          restoreFailed: "恢复历史版本失败",
+        },
+      },
+      focusMode: {
+        enter: "进入专注模式",
+        exit: "退出专注模式",
       },
     },
     notes: {
@@ -544,8 +884,10 @@ const messages = {
     dialogs: {
       importTitle: "导入 Markdown 或文本笔记",
       exportTitle: "导出笔记",
+      exportPdfTitle: "导出 PDF",
       markdownTextFilterName: "Markdown / Text",
       markdownFilterName: "Markdown",
+      pdfFilterName: "PDF",
       confirmMoveToTrash: (title) => `确定把“${title}”移入回收站吗？`,
       confirmDeleteForever: (title) => `确定彻底删除“${title}”吗？此操作不可撤销。`,
     },
@@ -554,10 +896,15 @@ const messages = {
       createdChild: (title) => `已在“${title}”下创建子文档`,
       imported: (title) => `已导入 ${title}`,
       exported: (path) => `已导出到 ${path}`,
+      exportedPdf: (path) => `已导出 PDF：${path}`,
       duplicated: (title) => `已复制为 ${title}`,
       movedToTrash: (title) => `已移入回收站：${title}`,
       restored: (title) => `已恢复：${title}`,
       deletedForever: (title) => `已彻底删除：${title}`,
+      createdFromTemplate: (title) => `已通过模板创建：${title}`,
+      templateSaved: (title) => `已保存模板：${title}`,
+      versionRestored: (title) => `已恢复历史版本：${title}`,
+      printStarted: "已打开打印对话框",
       pinned: "已加入收藏",
       unpinned: "已取消收藏",
     },
@@ -568,10 +915,13 @@ const messages = {
       createFailed: "创建文档失败",
       importFailed: "导入失败",
       exportFailed: "导出失败",
+      exportPdfFailed: "导出 PDF 失败",
       duplicateFailed: "复制失败",
       moveToTrashFailed: "移入回收站失败",
       restoreFailed: "恢复失败",
+      restoreVersionFailed: "恢复历史版本失败",
       deleteForeverFailed: "彻底删除失败",
+      printFailed: "打印失败",
       toggleFavoriteFailed: "收藏操作失败",
       noteNotFound: (id) => `未找到文档：${id}`,
     },
@@ -592,12 +942,20 @@ const messages = {
         general: "General",
         security: "Security",
         intelligence: "Intelligence",
+        templates: "Templates",
       },
-      general: {
-        title: "General Settings",
-        cards: {
-          localFirstTitle: "Local-first workspace",
-          localFirstDescription: "Notes and model configurations stay on this device by default, so your documents remain available even when offline.",
+    general: {
+      title: "General Settings",
+      appearance: {
+        title: "Appearance",
+        description: "Choose system, light, or dark mode. Dark mode also updates the editor and code block theme.",
+        system: "System",
+        light: "Light",
+        dark: "Dark",
+      },
+      cards: {
+        localFirstTitle: "Local-first workspace",
+        localFirstDescription: "Notes and model configurations stay on this device by default, so your documents remain available even when offline.",
           languageTitle: "Language and display",
           languageDescription: "The interface follows the system language automatically and currently supports Simplified Chinese and English.",
         },
@@ -728,18 +1086,67 @@ const messages = {
           },
         },
       },
+      templates: {
+        title: "Document Templates",
+        description: "Manage built-in templates and your own custom templates in one place. New documents can be created directly from a template to keep structure and tone consistent.",
+        loading: "Loading templates...",
+        empty: "No templates are available yet.",
+        builtInBadge: "Built-in",
+        customBadge: "Custom",
+        customCategoryFallback: "My Templates",
+        actions: {
+          edit: "Edit",
+          delete: "Delete",
+        },
+        dialog: {
+          saveCurrentTitle: "Save as Template",
+          editTitle: "Edit Template",
+          close: "Close",
+          save: "Save",
+          cancel: "Cancel",
+        },
+        picker: {
+          title: "Create from Template",
+          create: "Create Document",
+        },
+        fields: {
+          title: "Template Title",
+          description: "Template Description",
+          category: "Template Category",
+        },
+        placeholders: {
+          title: "Enter a template title",
+          description: "Briefly describe when to use this template",
+          category: "For example: Meetings, Weekly Reviews, Knowledge Cards",
+        },
+        notices: {
+          updated: (title) => `Updated template: ${title}`,
+          deleted: (title) => `Deleted template: ${title}`,
+        },
+        errors: {
+          loadFailed: "Failed to load templates",
+          createFailed: "Failed to save template",
+          createNoteFailed: "Failed to create a document from the template",
+          notFound: "Template not found",
+          updateFailed: "Failed to update template",
+          deleteFailed: "Failed to delete template",
+        },
+      },
     },
     tree: {
-      titleAll: "Document Tree",
+      titleAll: "Directory",
       titleFavorites: "Favorites",
       titleTrash: "Trash",
+      pinnedTitle: "Pinned",
       emptyAll: "No documents yet. Create your first one from the top right.",
       emptyFavorites: "No favorites yet. Click the star on a document node to add it to favorites.",
       emptyTrash: "Trash is empty.",
       loading: "Loading document tree...",
       noResults: "No matching documents found.",
       searchPlaceholder: "Search documents...",
-      createButton: "New",
+      createButton: "Add Document",
+      importMenuButton: "Import / Template",
+      createFromTemplateButton: "From Template",
       importButton: "Import Markdown",
       countLabel: (count) => `${count} documents`,
       restoreTitle: "Restore",
@@ -757,9 +1164,12 @@ const messages = {
       loading: "Loading document content...",
       titlePlaceholder: "Give this note a title",
       editButton: "Edit",
-      updateButton: "Update",
+      updateButton: "Save",
       moreButton: "More",
-      exportAction: "Export",
+      saveAsTemplateAction: "Save as template",
+      exportAction: "Export Markdown",
+      exportPdfAction: "Export PDF",
+      printAction: "Print",
       deleteAction: "Delete",
       deleteForeverAction: "Delete permanently",
       confirmTitleButton: "Confirm",
@@ -770,6 +1180,88 @@ const messages = {
       trashedReadonlyNotice: "This note is currently in the trash and is read-only. Restore it to continue editing, or delete it permanently.",
       emptyTitle: "Select a document to begin",
       emptyDescription: "Use the document tree on the left to browse nested documents, then preview or edit content on the right.",
+      formatting: {
+        bold: "Bold",
+        italic: "Italic",
+        underline: "Underline",
+        strike: "Strikethrough",
+        inlineCode: "Inline code",
+        highlight: "Highlight",
+        clearHighlight: "Clear highlight",
+        more: "More formats",
+        superscript: "Superscript",
+        subscript: "Subscript",
+        bulletList: "Bullet list",
+        orderedList: "Ordered list",
+        alignLeft: "Align left",
+        alignCenter: "Align center",
+        alignRight: "Align right",
+      },
+      commands: {
+        heading1: "Heading 1",
+        heading2: "Heading 2",
+        heading3: "Heading 3",
+        taskList: "Task list",
+        table: "Table",
+        image: "Image",
+        file: "Attachment",
+        details: "Details",
+        math: "Math",
+        toc: "Table of contents",
+        codeBlock: "Code block",
+        blockquote: "Blockquote",
+        horizontalRule: "Divider",
+      },
+      commandDescriptions: {
+        heading1: "Insert or switch to a level-1 heading",
+        heading2: "Insert or switch to a level-2 heading",
+        heading3: "Insert or switch to a level-3 heading",
+        taskList: "Insert a checklist-style task list",
+        table: "Insert a 3 x 3 table",
+        image: "Choose and insert an image",
+        file: "Choose and insert an attachment",
+        details: "Insert a collapsible details block",
+        math: "Insert an inline math expression",
+        toc: "Open the table of contents panel",
+        codeBlock: "Insert a syntax-highlighted code block",
+        blockquote: "Insert a blockquote",
+        horizontalRule: "Insert a divider line",
+      },
+      commandGroups: {
+        ai: "AI",
+        links: "Links",
+        structure: "Structure",
+        lists: "Lists",
+        blocks: "Blocks",
+        navigation: "Navigation",
+      },
+      codeBlock: {
+        copyLabel: "Copy code",
+        copiedLabel: "Copied",
+        languageLabel: "Language",
+        languagePlaceholder: "plaintext",
+      },
+      toc: {
+        title: "Table of contents",
+        empty: "No headings yet",
+        expand: "Expand",
+        collapse: "Collapse",
+      },
+      assets: {
+        imageFilterName: "Images",
+        invalidImage: "This image format could not be recognized. Choose a PNG, JPG, GIF, WebP, BMP, SVG, or AVIF file.",
+        imageTooLarge: (limit) => `Each image must be smaller than ${limit}.`,
+        fileTooLarge: (limit) => `Each attachment must be smaller than ${limit}.`,
+        noteAssetLimitExceeded: (limit) => `The combined image and attachment size for one note must stay under ${limit}.`,
+        assetNotFound: "The requested asset could not be found.",
+        importImageFailed: "Failed to import image.",
+        importFileFailed: "Failed to import attachment.",
+        openAttachment: "Open attachment",
+        previewImage: "Preview image",
+        replaceImage: "Replace image",
+        closeLightbox: "Close image preview",
+        removeAsset: "Remove asset",
+      },
       aiWrite: {
         slashLabel: "AI Write",
         slashDescription: "Continue the document with AI using the current context",
@@ -797,6 +1289,29 @@ const messages = {
         backlinksSummary: (count) => `${count} document${count === 1 ? "" : "s"} link to this document`,
         backlinksExpand: "Expand",
         backlinksCollapse: "Collapse",
+      },
+      versionHistory: {
+        button: "History",
+        title: "Version History",
+        current: "Current",
+        currentMeta: (wordCount) => `${wordCount} words`,
+        preview: "Previewing",
+        restore: "Restore This Version",
+        close: "Close",
+        empty: "No restorable versions yet.",
+        loading: "Loading version history...",
+        exitPreview: "Exit Preview",
+        viewCurrent: "View Current Version",
+        previewDescription: "You are viewing a historical snapshot. The editor is now in read-only preview mode.",
+        previewing: (time) => `Previewing the version from ${time}`,
+        errors: {
+          versionNotFound: "This version could not be found.",
+          restoreFailed: "Failed to restore this version.",
+        },
+      },
+      focusMode: {
+        enter: "Enter Focus Mode",
+        exit: "Exit Focus Mode",
       },
     },
     notes: {
@@ -836,8 +1351,10 @@ const messages = {
     dialogs: {
       importTitle: "Import Markdown or text note",
       exportTitle: "Export note",
+      exportPdfTitle: "Export PDF",
       markdownTextFilterName: "Markdown / Text",
       markdownFilterName: "Markdown",
+      pdfFilterName: "PDF",
       confirmMoveToTrash: (title) => `Move “${title}” to trash?`,
       confirmDeleteForever: (title) => `Delete “${title}” permanently? This action cannot be undone.`,
     },
@@ -846,10 +1363,15 @@ const messages = {
       createdChild: (title) => `Created a child document under “${title}”`,
       imported: (title) => `Imported ${title}`,
       exported: (path) => `Exported to ${path}`,
+      exportedPdf: (path) => `Exported PDF to ${path}`,
       duplicated: (title) => `Duplicated as ${title}`,
       movedToTrash: (title) => `Moved to trash: ${title}`,
       restored: (title) => `Restored: ${title}`,
       deletedForever: (title) => `Deleted permanently: ${title}`,
+      createdFromTemplate: (title) => `Created from template: ${title}`,
+      templateSaved: (title) => `Saved template: ${title}`,
+      versionRestored: (title) => `Restored version for: ${title}`,
+      printStarted: "Opened the print dialog",
       pinned: "Added to favorites",
       unpinned: "Removed from favorites",
     },
@@ -860,10 +1382,13 @@ const messages = {
       createFailed: "Failed to create document",
       importFailed: "Import failed",
       exportFailed: "Export failed",
+      exportPdfFailed: "Failed to export PDF",
       duplicateFailed: "Duplicate failed",
       moveToTrashFailed: "Failed to move document to trash",
       restoreFailed: "Restore failed",
+      restoreVersionFailed: "Failed to restore version",
       deleteForeverFailed: "Failed to delete document permanently",
+      printFailed: "Failed to print",
       toggleFavoriteFailed: "Favorite action failed",
       noteNotFound: (id) => `Document not found: ${id}`,
     },

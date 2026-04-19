@@ -1,5 +1,6 @@
 import path from "node:path"
 import type { JSONContent } from "@tiptap/core"
+import { DEFAULT_HIGHLIGHT_COLOR, isExternalUrl } from "../../../src/shared/assets"
 import {
   buildNoteLinkHref,
   createNoteLinkNode,
@@ -183,6 +184,14 @@ function readMarkdownLink(text: string, startIndex: number) {
   }
 }
 
+function readMarkdownImage(text: string, startIndex: number) {
+  if (text[startIndex] !== "!") {
+    return null
+  }
+
+  return readMarkdownLink(text, startIndex + 1)
+}
+
 function readAngleAutolink(text: string, startIndex: number) {
   if (text[startIndex] !== "<") {
     return null
@@ -203,6 +212,87 @@ function readAngleAutolink(text: string, startIndex: number) {
   return {
     href,
     endIndex: endIndex + 1,
+  }
+}
+
+function readInlineHtmlElement(text: string, startIndex: number, tagName: string) {
+  const tagPattern = new RegExp(`^<${tagName}\\b([^>]*)>`, "i")
+  const source = text.slice(startIndex)
+  const openingMatch = source.match(tagPattern)
+
+  if (!openingMatch) {
+    return null
+  }
+
+  const openingTag = openingMatch[0]
+  const closeTag = `</${tagName}>`
+  const lowerSource = text.toLowerCase()
+  const closingIndex = lowerSource.indexOf(closeTag.toLowerCase(), startIndex + openingTag.length)
+
+  if (closingIndex === -1) {
+    return null
+  }
+
+  return {
+    openingTag,
+    inner: text.slice(startIndex + openingTag.length, closingIndex),
+    endIndex: closingIndex + closeTag.length,
+  }
+}
+
+function readHighlightColor(openingTag: string) {
+  const styleMatch = openingTag.match(/style\s*=\s*["']([^"']+)["']/i)
+  const backgroundColorMatch = styleMatch?.[1]?.match(/background-color\s*:\s*([^;]+)/i)
+
+  return backgroundColorMatch?.[1]?.trim() || null
+}
+
+function normalizeTextAlign(value: unknown) {
+  return value === "center" || value === "right" || value === "left" ? value : null
+}
+
+function readAlignedBlock(line: string) {
+  const trimmed = line.trim()
+  const match = trimmed.match(/^<(p|h([1-3]))\b([^>]*)>([\s\S]*)<\/\1>$/i)
+
+  if (!match) {
+    return null
+  }
+
+  const tagName = (match[1] ?? "").toLowerCase()
+  const level = Number(match[2] ?? "0")
+  const attrs = match[3] ?? ""
+  const inner = (match[4] ?? "").trim()
+  const styleMatch = attrs.match(/style\s*=\s*["']([^"']+)["']/i)
+  const textAlign = normalizeTextAlign(styleMatch?.[1]?.match(/text-align\s*:\s*(left|center|right)/i)?.[1]?.toLowerCase())
+
+  if (!textAlign) {
+    return null
+  }
+
+  const inlineContent = parseInlineMarkdown(inner)
+  const content =
+    tagName === "p"
+      ? ({
+          type: "paragraph",
+          attrs: {
+            textAlign,
+          },
+          ...(inlineContent.length ? { content: inlineContent } : {}),
+        } satisfies JSONContent)
+      : ({
+          type: "heading",
+          attrs: {
+            level: Math.max(1, Math.min(3, level || 1)),
+            textAlign,
+          },
+          ...(inlineContent.length ? { content: inlineContent } : {}),
+        } satisfies JSONContent)
+
+  return {
+    content,
+    text: inlineContent.map((node) => plainTextFromNode(node)).join("").trim(),
+    level: tagName === "p" ? null : Math.max(1, Math.min(3, level || 1)),
   }
 }
 
@@ -280,6 +370,81 @@ function parseInlineMarkdown(text: string) {
       continue
     }
 
+    const underlineElement = readInlineHtmlElement(text, index, "u")
+
+    if (underlineElement) {
+      flushBuffer()
+      nodes.push(...applyMark(parseInlineMarkdown(underlineElement.inner), { type: "underline" }))
+      index = underlineElement.endIndex
+      continue
+    }
+
+    const highlightElement = readInlineHtmlElement(text, index, "mark")
+
+    if (highlightElement) {
+      flushBuffer()
+      const color = readHighlightColor(highlightElement.openingTag)
+      nodes.push(
+        ...applyMark(parseInlineMarkdown(highlightElement.inner), {
+          type: "highlight",
+          ...(color ? { attrs: { color } } : {}),
+        }),
+      )
+      index = highlightElement.endIndex
+      continue
+    }
+
+    if (text.startsWith("==", index)) {
+      const highlightEnd = findClosingToken(text, "==", index + 2)
+
+      if (highlightEnd !== -1) {
+        flushBuffer()
+        nodes.push(
+          ...applyMark(parseInlineMarkdown(text.slice(index + 2, highlightEnd)), {
+            type: "highlight",
+            attrs: {
+              color: DEFAULT_HIGHLIGHT_COLOR,
+            },
+          }),
+        )
+        index = highlightEnd + 2
+        continue
+      }
+    }
+
+    if (text.startsWith("~~", index)) {
+      const strikeEnd = findClosingToken(text, "~~", index + 2)
+
+      if (strikeEnd !== -1) {
+        flushBuffer()
+        nodes.push(...applyMark(parseInlineMarkdown(text.slice(index + 2, strikeEnd)), { type: "strike" }))
+        index = strikeEnd + 2
+        continue
+      }
+    }
+
+    if (char === "^") {
+      const superscriptEnd = findClosingToken(text, "^", index + 1)
+
+      if (superscriptEnd !== -1) {
+        flushBuffer()
+        nodes.push(...applyMark(parseInlineMarkdown(text.slice(index + 1, superscriptEnd)), { type: "superscript" }))
+        index = superscriptEnd + 1
+        continue
+      }
+    }
+
+    if (char === "~") {
+      const subscriptEnd = findClosingToken(text, "~", index + 1)
+
+      if (subscriptEnd !== -1) {
+        flushBuffer()
+        nodes.push(...applyMark(parseInlineMarkdown(text.slice(index + 1, subscriptEnd)), { type: "subscript" }))
+        index = subscriptEnd + 1
+        continue
+      }
+    }
+
     if (strongMarker) {
       const strongEnd = findClosingToken(text, strongMarker, index + strongMarker.length)
 
@@ -330,11 +495,52 @@ function listNode(type: "bulletList" | "orderedList", items: string[]): JSONCont
   }
 }
 
+function taskListNode(items: Array<{ text: string; checked: boolean }>): JSONContent {
+  return {
+    type: "taskList",
+    content: items.map((item) => ({
+      type: "taskItem",
+      attrs: {
+        checked: item.checked,
+      },
+      content: [paragraphNode(item.text)],
+    })),
+  }
+}
+
 function codeBlockNode(text: string, language: string | null): JSONContent {
   return {
     type: "codeBlock",
     ...(language ? { attrs: { language } } : {}),
     ...(text ? { content: [{ type: "text", text }] } : {}),
+  }
+}
+
+function mathBlockNode(latex: string): JSONContent {
+  return {
+    type: "mathBlock",
+    attrs: {
+      latex,
+    },
+  }
+}
+
+function detailsNode(summary: string, bodyContent: JSONContent[], open = false): JSONContent {
+  const summaryContent = parseInlineMarkdown(summary)
+
+  return {
+    type: "details",
+    ...(open ? { attrs: { open: true } } : {}),
+    content: [
+      {
+        type: "detailsSummary",
+        ...(summaryContent.length ? { content: summaryContent } : {}),
+      },
+      {
+        type: "detailsContent",
+        content: bodyContent.length > 0 ? bodyContent : [paragraphNode("")],
+      },
+    ],
   }
 }
 
@@ -499,6 +705,88 @@ function tableNode(lines: string[], startIndex: number) {
   }
 }
 
+function readBlockMath(lines: string[], startIndex: number) {
+  const firstLine = lines[startIndex]?.trim() ?? ""
+
+  if (firstLine === "$$") {
+    const latexLines: string[] = []
+    let index = startIndex + 1
+
+    while (index < lines.length) {
+      const currentLine = lines[index] ?? ""
+
+      if (currentLine.trim() === "$$") {
+        index += 1
+        break
+      }
+
+      latexLines.push(currentLine)
+      index += 1
+    }
+
+    return {
+      content: mathBlockNode(latexLines.join("\n").trim()),
+      nextIndex: index,
+    }
+  }
+
+  const singleLineMatch = firstLine.match(/^\$\$\s*([\s\S]+?)\s*\$\$$/)
+
+  if (!singleLineMatch) {
+    return null
+  }
+
+  return {
+    content: mathBlockNode((singleLineMatch[1] ?? "").trim()),
+    nextIndex: startIndex + 1,
+  }
+}
+
+function readDetailsBlock(lines: string[], startIndex: number) {
+  const openingLine = lines[startIndex]?.trim() ?? ""
+
+  if (!/^<details\b/i.test(openingLine)) {
+    return null
+  }
+
+  const collectedLines: string[] = []
+  let index = startIndex
+
+  while (index < lines.length) {
+    const currentLine = lines[index] ?? ""
+    collectedLines.push(currentLine)
+    index += 1
+
+    if (/<\/details>\s*$/i.test(currentLine.trim())) {
+      break
+    }
+  }
+
+  const rawBlock = collectedLines.join("\n").trim()
+  const blockMatch = rawBlock.match(/^<details\b([^>]*)>([\s\S]*?)<\/details>$/i)
+
+  if (!blockMatch) {
+    return null
+  }
+
+  const attrsSource = blockMatch[1] ?? ""
+  const inner = (blockMatch[2] ?? "").trim()
+  const summaryMatch = inner.match(/^<summary>([\s\S]*?)<\/summary>([\s\S]*)$/i)
+
+  if (!summaryMatch) {
+    return null
+  }
+
+  const summary = (summaryMatch[1] ?? "").trim()
+  const body = (summaryMatch[2] ?? "").trim()
+  const bodyBlocks = parseMarkdownBlocks(body, "", false).content
+
+  return {
+    content: detailsNode(summary, bodyBlocks, /\bopen\b/i.test(attrsSource)),
+    nextIndex: index,
+  }
+}
+
 function readParagraph(lines: string[], startIndex: number) {
   const parts: string[] = []
   let index = startIndex
@@ -515,11 +803,18 @@ function readParagraph(lines: string[], startIndex: number) {
       break
     }
 
+    if (readBlockMath(lines, index) || readDetailsBlock(lines, index)) {
+      break
+    }
+
     if (isTableBlockStart(lines, index)) {
       break
     }
 
-    if (/^(#{1,3}\s+|>\s+|[-*]\s+|\d+\.\s+)/.test(trimmed)) {
+    if (
+      /^(#{1,3}\s+|>\s+|[-*]\s+\[(?: |x|X)\]\s+|[-*]\s+|\d+\.\s+|(?:-{3,}|\*{3,}|_{3,})$)/.test(trimmed) ||
+      /^<(?:p|h[1-3])\b[^>]*text-align:/i.test(trimmed)
+    ) {
       break
     }
 
@@ -542,6 +837,14 @@ function plainTextFromNode(node: JSONContent): string {
     return typeof node.attrs?.title === "string" ? node.attrs.title : ""
   }
 
+  if (node.type === "image") {
+    return typeof node.attrs?.alt === "string" ? node.attrs.alt : ""
+  }
+
+  if (node.type === "fileAttachment") {
+    return typeof node.attrs?.filename === "string" ? node.attrs.filename : ""
+  }
+
   if (node.type === "tableRow") {
     return (node.content ?? []).map((child) => plainTextFromNode(child)).join(" ")
   }
@@ -554,6 +857,10 @@ function plainTextFromNode(node: JSONContent): string {
     return (node.content ?? []).map((child) => plainTextFromNode(child)).join("\n")
   }
 
+  if (node.type === "mathBlock") {
+    return typeof node.attrs?.latex === "string" ? node.attrs.latex : ""
+  }
+
   if (node.content?.length) {
     const separator = node.type === "paragraph" || node.type === "heading" ? "" : " "
 
@@ -563,12 +870,12 @@ function plainTextFromNode(node: JSONContent): string {
   return ""
 }
 
-export function documentFromMarkdown(source: string, fallbackTitle: string): CreateNoteInput {
+function parseMarkdownBlocks(source: string, fallbackTitle: string, extractTitle: boolean) {
   const normalized = source.replace(/\r\n/g, "\n").trim()
   const lines = normalized ? normalized.split("\n") : []
   const content: JSONContent[] = []
   let extractedTitle = fallbackTitle
-  let titleResolved = false
+  let titleResolved = !extractTitle
   let index = 0
 
   while (index < lines.length) {
@@ -586,6 +893,81 @@ export function documentFromMarkdown(source: string, fallbackTitle: string): Cre
     if (codeBlock) {
       content.push(codeBlock.content)
       index = codeBlock.nextIndex
+      continue
+    }
+
+    const alignedBlock = readAlignedBlock(trimmed)
+
+    if (alignedBlock) {
+      if (!titleResolved && alignedBlock.level === 1 && alignedBlock.text) {
+        extractedTitle = alignedBlock.text
+        titleResolved = true
+        index += 1
+        continue
+      }
+
+      content.push(alignedBlock.content)
+      index += 1
+      continue
+    }
+
+    if (/^(?:-{3,}|\*{3,}|_{3,})$/.test(trimmed)) {
+      content.push({
+        type: "horizontalRule",
+      })
+      index += 1
+      continue
+    }
+
+    const blockMath = readBlockMath(lines, index)
+
+    if (blockMath) {
+      content.push(blockMath.content)
+      index = blockMath.nextIndex
+      continue
+    }
+
+    const detailsBlock = readDetailsBlock(lines, index)
+
+    if (detailsBlock) {
+      content.push(detailsBlock.content)
+      index = detailsBlock.nextIndex
+      continue
+    }
+
+    const image = readMarkdownImage(trimmed, 0)
+
+    if (image && image.endIndex === trimmed.length) {
+      content.push({
+        type: "image",
+        attrs: {
+          src: image.href,
+          alt: image.label || null,
+          title: null,
+        },
+      })
+      index += 1
+      continue
+    }
+
+    const attachment = readMarkdownLink(trimmed, 0)
+
+    if (
+      attachment &&
+      attachment.endIndex === trimmed.length &&
+      !parseNoteLinkHref(attachment.href) &&
+      !isExternalUrl(attachment.href)
+    ) {
+      content.push({
+        type: "fileAttachment",
+        attrs: {
+          src: attachment.href,
+          filename: attachment.label.trim() || path.basename(attachment.href),
+          size: null,
+          mimeType: null,
+        },
+      })
+      index += 1
       continue
     }
 
@@ -630,6 +1012,28 @@ export function documentFromMarkdown(source: string, fallbackTitle: string): Cre
         type: "blockquote",
         content: [paragraphNode(quoteLines.join(" "))],
       })
+      continue
+    }
+
+    if (/^[-*]\s+\[(?: |x|X)\]\s+/.test(trimmed)) {
+      const items: Array<{ text: string; checked: boolean }> = []
+
+      while (index < lines.length) {
+        const candidate = lines[index]?.trim() ?? ""
+        const match = candidate.match(/^[-*]\s+\[( |x|X)\]\s+(.+)$/)
+
+        if (!match) {
+          break
+        }
+
+        items.push({
+          checked: (match[1] ?? "").toLowerCase() === "x",
+          text: match[2] ?? "",
+        })
+        index += 1
+      }
+
+      content.push(taskListNode(items))
       continue
     }
 
@@ -681,20 +1085,34 @@ export function documentFromMarkdown(source: string, fallbackTitle: string): Cre
     index = paragraph.nextIndex
   }
 
-  const plainText = content
-    .map((node) => plainTextFromNode(node))
-    .join("\n")
-    .replace(/\s+/g, " ")
-    .trim()
+    const plainText = content
+      .map((node) => plainTextFromNode(node))
+      .join("\n")
+      .replace(/\s+/g, " ")
+      .trim()
 
   return {
     title: extractedTitle,
     plainText,
+    content: content.length > 0 ? content : [paragraphNode("")],
+  }
+}
+
+export function documentFromMarkdown(source: string, fallbackTitle: string): CreateNoteInput {
+  const parsed = parseMarkdownBlocks(source, fallbackTitle, true)
+
+  return {
+    title: parsed.title,
+    plainText: parsed.plainText,
     content: {
       type: "doc",
-      content: content.length > 0 ? content : [paragraphNode("")],
+      content: parsed.content,
     },
   }
+}
+
+interface MarkdownRenderOptions {
+  resolveAssetSource?: (source: string, nodeType: "image" | "fileAttachment") => string
 }
 
 function renderText(node: JSONContent) {
@@ -703,6 +1121,11 @@ function renderText(node: JSONContent) {
   const hasCode = marks.some((mark) => mark.type === "code")
   const hasBold = marks.some((mark) => mark.type === "bold")
   const hasItalic = marks.some((mark) => mark.type === "italic")
+  const hasStrike = marks.some((mark) => mark.type === "strike")
+  const hasUnderline = marks.some((mark) => mark.type === "underline")
+  const hasSubscript = marks.some((mark) => mark.type === "subscript")
+  const hasSuperscript = marks.some((mark) => mark.type === "superscript")
+  const highlightMark = marks.find((mark) => mark.type === "highlight")
   const linkMark = marks.find((mark) => mark.type === "link")
   let value = baseText
 
@@ -718,6 +1141,27 @@ function renderText(node: JSONContent) {
     value = `_${value}_`
   }
 
+  if (hasStrike) {
+    value = `~~${value}~~`
+  }
+
+  if (hasUnderline) {
+    value = `<u>${value}</u>`
+  }
+
+  if (highlightMark) {
+    const color = typeof highlightMark.attrs?.color === "string" && highlightMark.attrs.color ? highlightMark.attrs.color : null
+    value = color ? `<mark style="background-color: ${color};">${value}</mark>` : `<mark>${value}</mark>`
+  }
+
+  if (hasSuperscript) {
+    value = `^${value}^`
+  }
+
+  if (hasSubscript) {
+    value = `~${value}~`
+  }
+
   if (typeof linkMark?.attrs?.href === "string" && linkMark.attrs.href) {
     value = `[${value}](${linkMark.attrs.href})`
   }
@@ -725,36 +1169,62 @@ function renderText(node: JSONContent) {
   return value
 }
 
-function renderInline(content?: JSONContent[]) {
-  return (content ?? []).map((node) => renderNode(node, 0)).join("")
+function renderInline(content: JSONContent[] | undefined, options: MarkdownRenderOptions) {
+  return (content ?? []).map((node) => renderNode(node, 0, options)).join("")
 }
 
-function renderList(content: JSONContent[] | undefined, depth: number, ordered: boolean) {
-  return (content ?? [])
-    .map((item, index) => {
-      const prefix = `${"  ".repeat(depth)}${ordered ? `${index + 1}.` : "-"} `
-      const firstParagraph = item.content?.find((child) => child.type === "paragraph")
-      const value = firstParagraph ? renderInline(firstParagraph.content) : ""
+function renderAlignedBlock(tagName: string, value: string, textAlign: unknown) {
+  const normalized = normalizeTextAlign(textAlign)
 
-      return `${prefix}${value}`
-    })
+  if (!normalized || normalized === "left") {
+    return value
+  }
+
+  return `<${tagName} style="text-align: ${normalized};">${value}</${tagName}>`
+}
+
+function renderListItem(
+  item: JSONContent,
+  depth: number,
+  prefix: string,
+  options: MarkdownRenderOptions,
+) {
+  const paragraph = item.content?.find((child) => child.type === "paragraph")
+  const text = paragraph ? renderInline(paragraph.content, options) : ""
+  const nestedBlocks = (item.content ?? [])
+    .filter((child) => child !== paragraph)
+    .map((child) => renderNode(child, depth + 1, options))
+    .filter(Boolean)
+
+  return [`${"  ".repeat(depth)}${prefix}${text}`, ...nestedBlocks].filter(Boolean).join("\n")
+}
+
+function renderList(content: JSONContent[] | undefined, depth: number, ordered: boolean, options: MarkdownRenderOptions) {
+  return (content ?? [])
+    .map((item, index) => renderListItem(item, depth, `${ordered ? `${index + 1}.` : "-"} `, options))
     .join("\n")
 }
 
-function renderTableCell(node: JSONContent) {
+function renderTaskList(content: JSONContent[] | undefined, depth: number, options: MarkdownRenderOptions) {
+  return (content ?? [])
+    .map((item) => renderListItem(item, depth, `- [${item.attrs?.checked ? "x" : " "}] `, options))
+    .join("\n")
+}
+
+function renderTableCell(node: JSONContent, options: MarkdownRenderOptions) {
   return (node.content ?? [])
     .map((child) => {
       if (child.type === "paragraph") {
-        return renderInline(child.content)
+        return renderInline(child.content, options)
       }
 
-      return renderNode(child, 0)
+      return renderNode(child, 0, options)
     })
     .join("<br>")
     .replace(/\|/g, "\\|")
 }
 
-function renderTable(node: JSONContent) {
+function renderTable(node: JSONContent, options: MarkdownRenderOptions) {
   const rows = node.content ?? []
 
   if (rows.length === 0) {
@@ -762,7 +1232,7 @@ function renderTable(node: JSONContent) {
   }
 
   const [headerRow, ...bodyRows] = rows
-  const headerCells = (headerRow?.content ?? []).map((cell) => renderTableCell(cell))
+  const headerCells = (headerRow?.content ?? []).map((cell) => renderTableCell(cell, options))
 
   if (headerCells.length === 0) {
     return ""
@@ -772,13 +1242,13 @@ function renderTable(node: JSONContent) {
   const markdownRows = [
     `| ${headerCells.join(" | ")} |`,
     `| ${separator.join(" | ")} |`,
-    ...bodyRows.map((row) => `| ${(row.content ?? []).map((cell) => renderTableCell(cell)).join(" | ")} |`),
+    ...bodyRows.map((row) => `| ${(row.content ?? []).map((cell) => renderTableCell(cell, options)).join(" | ")} |`),
   ]
 
   return markdownRows.join("\n")
 }
 
-function renderNode(node: JSONContent, depth: number): string {
+function renderNode(node: JSONContent, depth: number, options: MarkdownRenderOptions): string {
   if (node.type === "text") {
     return renderText(node)
   }
@@ -790,28 +1260,61 @@ function renderNode(node: JSONContent, depth: number): string {
     return noteId ? `[${title}](${buildNoteLinkHref(noteId)})` : title
   }
 
+  if (node.type === "image") {
+    const source = typeof node.attrs?.src === "string" ? node.attrs.src : ""
+    const alt = typeof node.attrs?.alt === "string" ? node.attrs.alt : ""
+    const nextSource = options.resolveAssetSource?.(source, "image") ?? source
+
+    return nextSource ? `![${alt}](${nextSource})` : ""
+  }
+
+  if (node.type === "fileAttachment") {
+    const source = typeof node.attrs?.src === "string" ? node.attrs.src : ""
+    const filename =
+      typeof node.attrs?.filename === "string" && node.attrs.filename.trim()
+        ? node.attrs.filename.trim()
+        : path.basename(source || "attachment")
+    const nextSource = options.resolveAssetSource?.(source, "fileAttachment") ?? source
+
+    return nextSource ? `[${filename}](${nextSource})` : filename
+  }
+
   if (node.type === "heading") {
     const level = Math.max(1, Math.min(3, Number(node.attrs?.level ?? 1)))
+    const inlineValue = renderInline(node.content, options)
+    const textAlign = normalizeTextAlign(node.attrs?.textAlign)
 
-    return `${"#".repeat(level)} ${renderInline(node.content)}`
+    if (textAlign && textAlign !== "left") {
+      return renderAlignedBlock(`h${level}`, inlineValue, textAlign)
+    }
+
+    return `${"#".repeat(level)} ${inlineValue}`
   }
 
   if (node.type === "paragraph") {
-    return renderInline(node.content)
+    return renderAlignedBlock("p", renderInline(node.content, options), node.attrs?.textAlign)
   }
 
   if (node.type === "bulletList") {
-    return renderList(node.content, depth, false)
+    return renderList(node.content, depth, false, options)
   }
 
   if (node.type === "orderedList") {
-    return renderList(node.content, depth, true)
+    return renderList(node.content, depth, true, options)
+  }
+
+  if (node.type === "taskList") {
+    return renderTaskList(node.content, depth, options)
   }
 
   if (node.type === "blockquote") {
     return (node.content ?? [])
-      .map((child) => `> ${renderNode(child, depth)}`)
+      .map((child) => `> ${renderNode(child, depth, options)}`)
       .join("\n")
+  }
+
+  if (node.type === "horizontalRule") {
+    return "---"
   }
 
   if (node.type === "codeBlock") {
@@ -821,12 +1324,33 @@ function renderNode(node: JSONContent, depth: number): string {
     return `\`\`\`${language}\n${body}\n\`\`\``
   }
 
+  if (node.type === "mathBlock") {
+    const latex = typeof node.attrs?.latex === "string" ? node.attrs.latex.trim() : ""
+
+    return `$$\n${latex}\n$$`
+  }
+
   if (node.type === "table") {
-    return renderTable(node)
+    return renderTable(node, options)
+  }
+
+  if (node.type === "details") {
+    const summaryNode = (node.content ?? []).find((child) => child.type === "detailsSummary")
+    const contentNode = (node.content ?? []).find((child) => child.type === "detailsContent")
+    const summary = renderInline(summaryNode?.content, options)
+    const body = (contentNode?.content ?? [])
+      .map((child) => renderNode(child, depth + 1, options))
+      .filter(Boolean)
+      .join("\n\n")
+    const openAttribute = node.attrs?.open ? " open" : ""
+
+    return [`<details${openAttribute}>`, `<summary>${summary}</summary>`, body, `</details>`]
+      .filter((segment) => segment !== "")
+      .join("\n")
   }
 
   if (node.content?.length) {
-    return node.content.map((child) => renderNode(child, depth)).join("")
+    return node.content.map((child) => renderNode(child, depth, options)).join("")
   }
 
   return ""
@@ -836,9 +1360,9 @@ function sanitizeFileName(value: string) {
   return value.replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-").slice(0, 80) || "metis-note"
 }
 
-export function noteToMarkdown(note: NoteDocument) {
+export function noteToMarkdown(note: NoteDocument, options: MarkdownRenderOptions = {}) {
   const blocks = note.content.content ?? []
-  const renderedBody = blocks.map((block) => renderNode(block, 0)).filter(Boolean).join("\n\n")
+  const renderedBody = blocks.map((block) => renderNode(block, 0, options)).filter(Boolean).join("\n\n")
   const metaLines = [
     note.tags.length > 0 ? `> Tags: ${note.tags.join(", ")}` : "",
     `> Updated: ${new Date(note.updatedAt).toLocaleString("zh-CN")}`,

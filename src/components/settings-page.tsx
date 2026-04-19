@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react"
-import { ChevronDown, Plus, Settings2, Shield, Sparkles, Trash2 } from "lucide-react"
+import { ChevronDown, LayoutTemplate, Plus, Settings2, Shield, Sparkles, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { TemplateSettingsSection } from "@/components/template-settings-section"
 import {
   Dialog,
   DialogBody,
@@ -15,6 +16,7 @@ import { FormControl, FormError, FormField, FormLabel } from "@/components/ui/fo
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useI18n } from "@/i18n/provider"
 import { cn } from "@/lib/utils"
+import { useTheme } from "@/theme/provider"
 import {
   LLM_PROTOCOL_ORDER,
   LLM_PROVIDER_ORDER,
@@ -31,8 +33,10 @@ import {
   type LlmProtocolId,
   type SaveLlmModelInput,
 } from "@/shared/llm"
+import type { TemplateDialogValues } from "@/components/template-dialog"
+import type { TemplateSummary } from "@/shared/templates"
 
-type SettingsSection = "general" | "security" | "intelligence"
+type SettingsSection = "general" | "security" | "intelligence" | "templates"
 type LocalCatalogEntry = {
   definition: ManagedLocalModelDefinition
   model: LlmModelConfig | null
@@ -145,9 +149,9 @@ function SettingsCard({
   description: string
 }) {
   return (
-    <div className="rounded-xl border border-[#e7ebf1] bg-white px-5 py-5">
-      <h3 className="text-base font-semibold text-[#1f2937]">{title}</h3>
-      <p className="mt-2 text-sm leading-7 text-[#667085]">{description}</p>
+    <div className="rounded-xl border border-[#e7ebf1] bg-white px-5 py-5 dark:border-[#243041] dark:bg-[#101827]">
+      <h3 className="text-base font-semibold text-[#1f2937] dark:text-slate-100">{title}</h3>
+      <p className="mt-2 text-sm leading-7 text-[#667085] dark:text-slate-400">{description}</p>
     </div>
   )
 }
@@ -171,15 +175,16 @@ function SectionButton({
       className={cn(
         "flex w-full items-center gap-3 rounded-xl border px-4 py-3.5 text-left text-sm font-medium transition",
         active
-          ? "border-[#dce6f7] bg-[#e8f0ff] text-[#2f6ef6]"
-          : "border-transparent bg-transparent text-[#475467] hover:bg-[#f6f8fb]",
+          ? "border-[#dce6f7] bg-[#e8f0ff] text-[#2f6ef6] dark:border-[#24416e] dark:bg-[#13233f] dark:text-[#8eb8ff]"
+          : "border-transparent bg-transparent text-[#475467] hover:bg-[#f6f8fb] dark:text-slate-400 dark:hover:bg-[#111827]",
       )}
       onClick={onClick}
     >
       <span
         className={cn(
           "inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#eef2f7] bg-white text-[#7a8aa0]",
-          active && "text-[#2f6ef6]",
+          active && "text-[#2f6ef6] dark:text-[#8eb8ff]",
+          "dark:border-[#243041] dark:bg-[#0f172a] dark:text-slate-400",
         )}
       >
         <Icon className="h-5 w-5" />
@@ -209,7 +214,7 @@ function ModelTextField({
       <FormLabel>{label}</FormLabel>
       <FormControl tone={tone === "soft" ? "muted" : "default"}>
         <input
-          className="h-full w-full border-none bg-transparent text-[15px] text-[#243444] outline-none placeholder:text-[#98a2b3]"
+          className="h-full w-full border-none bg-transparent text-[15px] text-[#243444] outline-none placeholder:text-[#98a2b3] dark:text-slate-100 dark:placeholder:text-slate-500"
           placeholder={placeholder}
           type={type}
           value={value}
@@ -768,18 +773,24 @@ function RowActionButton({
 
 export function SettingsPage() {
   const { messages } = useI18n()
+  const { appearance, setAppearance } = useTheme()
   const settingsMessages = messages.settings
   const intelligenceMessages = settingsMessages.intelligence
+  const templateMessages = settingsMessages.templates
   const localMessages = intelligenceMessages.local
   const [activeSection, setActiveSection] = useState<SettingsSection>("intelligence")
   const [models, setModels] = useState<LlmModelConfig[]>([])
+  const [templates, setTemplates] = useState<TemplateSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null)
+  const [templateFeedback, setTemplateFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<LlmModelConfig | null>(null)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [isSubmittingDialog, setIsSubmittingDialog] = useState(false)
   const [pendingAction, setPendingAction] = useState<{ id: string; type: "enable" | "test" | "delete" } | null>(null)
+  const [pendingTemplateDeleteId, setPendingTemplateDeleteId] = useState<string | null>(null)
 
   const localCatalog = useMemo(() => getManagedLocalModelDefinitions(), [])
   const managedLocalModels = useMemo(
@@ -850,6 +861,28 @@ export function SettingsPage() {
     }
   }
 
+  async function loadTemplates(options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setIsLoadingTemplates(true)
+    }
+
+    try {
+      const nextTemplates = await window.metisNote.templates.list()
+      setTemplates(nextTemplates)
+    } catch (error) {
+      if (!options?.silent) {
+        setTemplateFeedback({
+          tone: "error",
+          message: error instanceof Error ? error.message : templateMessages.errors.loadFailed,
+        })
+      }
+    } finally {
+      if (!options?.silent) {
+        setIsLoadingTemplates(false)
+      }
+    }
+  }
+
   useEffect(() => {
     void loadModels()
   }, [])
@@ -866,6 +899,14 @@ export function SettingsPage() {
     return () => {
       window.clearInterval(interval)
     }
+  }, [activeSection])
+
+  useEffect(() => {
+    if (activeSection !== "templates") {
+      return
+    }
+
+    void loadTemplates()
   }, [activeSection])
 
   async function handleSubmitRemoteModel(payload: SaveLlmModelInput, id?: string) {
@@ -1012,11 +1053,49 @@ export function SettingsPage() {
     }
   }
 
+  async function handleUpdateTemplate(id: string, values: TemplateDialogValues) {
+    try {
+      const updated = await window.metisNote.templates.update(id, values)
+      await loadTemplates({ silent: true })
+      setTemplateFeedback({
+        tone: "success",
+        message: templateMessages.notices.updated(updated.title),
+      })
+    } catch (error) {
+      const nextError = error instanceof Error ? error : new Error(templateMessages.errors.updateFailed)
+      setTemplateFeedback({
+        tone: "error",
+        message: nextError.message,
+      })
+      throw nextError
+    }
+  }
+
+  async function handleDeleteTemplate(id: string) {
+    setPendingTemplateDeleteId(id)
+
+    try {
+      const deleted = await window.metisNote.templates.delete(id)
+      await loadTemplates({ silent: true })
+      setTemplateFeedback({
+        tone: "success",
+        message: templateMessages.notices.deleted(deleted.title),
+      })
+    } catch (error) {
+      setTemplateFeedback({
+        tone: "error",
+        message: error instanceof Error ? error.message : templateMessages.errors.deleteFailed,
+      })
+    } finally {
+      setPendingTemplateDeleteId(null)
+    }
+  }
+
   return (
     <>
-      <div className="flex h-full min-h-0 flex-1 overflow-hidden bg-white">
-        <div className="flex min-h-0 flex-1 overflow-hidden bg-white">
-          <aside className="w-[300px] shrink-0 border-r border-[#edf1f7] bg-white">
+      <div className="flex h-full min-h-0 flex-1 overflow-hidden bg-white dark:bg-[#020817]">
+        <div className="flex min-h-0 flex-1 overflow-hidden bg-white dark:bg-[#020817]">
+          <aside className="w-[300px] shrink-0 border-r border-[#edf1f7] bg-white dark:border-[#1f2937] dark:bg-[#0b1220]">
             <div className="space-y-3 px-4 py-4">
               <SectionButton
                 active={activeSection === "general"}
@@ -1036,14 +1115,22 @@ export function SettingsPage() {
                 label={settingsMessages.sections.intelligence}
                 onClick={() => setActiveSection("intelligence")}
               />
+              <SectionButton
+                active={activeSection === "templates"}
+                icon={LayoutTemplate}
+                label={settingsMessages.sections.templates}
+                onClick={() => setActiveSection("templates")}
+              />
             </div>
           </aside>
 
-          <ScrollArea className="min-h-0 flex-1 bg-white">
+          <ScrollArea className="min-h-0 flex-1 bg-white dark:bg-[#020817]">
             <div className="min-h-full px-6 py-6">
               {activeSection === "general" ? (
                 <div>
-                  <h1 className="text-[22px] font-semibold text-[#1f3045]">{settingsMessages.general.title}</h1>
+                  <h1 className="text-[22px] font-semibold text-[#1f3045] dark:text-slate-100">
+                    {settingsMessages.general.title}
+                  </h1>
                   <div className="mt-6 grid gap-4 xl:grid-cols-2">
                     <SettingsCard
                       title={settingsMessages.general.cards.localFirstTitle}
@@ -1053,13 +1140,43 @@ export function SettingsPage() {
                       title={settingsMessages.general.cards.languageTitle}
                       description={settingsMessages.general.cards.languageDescription}
                     />
+                    <div className="rounded-xl border border-[#e7ebf1] bg-white px-5 py-5 dark:border-[#243041] dark:bg-[#101827] xl:col-span-2">
+                      <h3 className="text-base font-semibold text-[#1f2937] dark:text-slate-100">
+                        {settingsMessages.general.appearance.title}
+                      </h3>
+                      <p className="mt-2 text-sm leading-7 text-[#667085] dark:text-slate-400">
+                        {settingsMessages.general.appearance.description}
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {([
+                          ["system", settingsMessages.general.appearance.system],
+                          ["light", settingsMessages.general.appearance.light],
+                          ["dark", settingsMessages.general.appearance.dark],
+                        ] as const).map(([mode, label]) => (
+                          <Button
+                            key={mode}
+                            variant={appearance === mode ? "default" : "outline"}
+                            className={cn(
+                              "h-10 rounded-xl px-4 text-sm font-medium",
+                              appearance !== mode &&
+                                "border-[#d0d5dd] text-[#475467] hover:bg-[#f8fafc] dark:border-[#243041] dark:bg-[#0f172a] dark:text-slate-300 dark:hover:bg-[#111827]",
+                            )}
+                            onClick={() => setAppearance(mode)}
+                          >
+                            {label}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : null}
 
               {activeSection === "security" ? (
                 <div>
-                  <h1 className="text-[22px] font-semibold text-[#1f3045]">{settingsMessages.security.title}</h1>
+                  <h1 className="text-[22px] font-semibold text-[#1f3045] dark:text-slate-100">
+                    {settingsMessages.security.title}
+                  </h1>
                   <div className="mt-6 grid gap-4 xl:grid-cols-2">
                     <SettingsCard
                       title={settingsMessages.security.cards.apiKeyTitle}
@@ -1071,6 +1188,17 @@ export function SettingsPage() {
                     />
                   </div>
                 </div>
+              ) : null}
+
+              {activeSection === "templates" ? (
+                <TemplateSettingsSection
+                  templates={templates}
+                  isLoading={isLoadingTemplates}
+                  feedback={templateFeedback}
+                  pendingDeleteId={pendingTemplateDeleteId}
+                  onUpdateTemplate={handleUpdateTemplate}
+                  onDeleteTemplate={handleDeleteTemplate}
+                />
               ) : null}
 
               {activeSection === "intelligence" ? (

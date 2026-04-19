@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import type { FileAssetResult, ImageAssetResult, RendererAssetImportPayload } from "./shared/assets"
 import type {
   LlmConnectionResult,
   LlmModelConfig,
@@ -17,6 +18,8 @@ import type {
   NoteSummary,
   UpdateNoteInput,
 } from "./shared/notes"
+import type { SaveTemplateInput, TemplateDocument, TemplateSummary } from "./shared/templates"
+import type { NoteVersionContent, VersionSummary } from "./shared/versions"
 
 declare global {
   interface Window {
@@ -25,6 +28,7 @@ declare global {
         list: () => Promise<NoteSummary[]>
         get: (id: string) => Promise<NoteDocument | null>
         create: (payload?: CreateNoteInput) => Promise<NoteDocument>
+        createFromTemplate: (templateId: string, payload?: CreateNoteInput) => Promise<NoteDocument>
         update: (id: string, payload: UpdateNoteInput) => Promise<NoteDocument>
         trash: (id: string) => Promise<NoteDocument>
         restore: (id: string) => Promise<NoteDocument>
@@ -32,10 +36,31 @@ declare global {
         deleteForever: (id: string) => Promise<DeleteNoteResult>
         importMarkdown: (payload?: CreateNoteInput) => Promise<ImportNoteResult>
         exportMarkdown: (id: string) => Promise<ExportNoteResult>
+        exportPdf: (id: string) => Promise<ExportNoteResult>
+        print: (id: string) => Promise<void>
       }
       noteLinks: {
         getBacklinks: (noteId: string) => Promise<NoteSummary[]>
         resolveLinks: (noteIds: string[]) => Promise<NoteLinkResolutionMap>
+      }
+      versions: {
+        list: (noteId: string) => Promise<VersionSummary[]>
+        get: (noteId: string, timestamp: string) => Promise<NoteVersionContent | null>
+        restore: (noteId: string, timestamp: string) => Promise<NoteDocument>
+      }
+      templates: {
+        list: () => Promise<TemplateSummary[]>
+        get: (id: string) => Promise<TemplateDocument | null>
+        createFromNote: (noteId: string, payload: SaveTemplateInput) => Promise<TemplateDocument>
+        update: (id: string, payload: SaveTemplateInput) => Promise<TemplateDocument>
+        delete: (id: string) => Promise<TemplateDocument>
+      }
+      assets: {
+        importImage: (payload: RendererAssetImportPayload) => Promise<ImageAssetResult>
+        importFile: (payload: RendererAssetImportPayload) => Promise<FileAssetResult>
+        pickAndImportImage: (noteId: string) => Promise<ImageAssetResult | null>
+        pickAndImportFile: (noteId: string) => Promise<FileAssetResult | null>
+        openFile: (source: string) => Promise<void>
       }
       llmModels: {
         list: () => Promise<LlmModelConfig[]>

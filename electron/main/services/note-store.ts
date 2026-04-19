@@ -21,7 +21,9 @@ import {
   type NoteWorkspace,
   type UpdateNoteInput,
 } from "../../../src/shared/notes"
+import { AssetStore } from "./asset-store"
 import { NoteLinkStore } from "./note-link-store"
+import { VersionStore } from "./version-store"
 
 interface LegacyNoteSummaryV1 {
   id: string
@@ -49,6 +51,8 @@ export class NoteStore {
     private readonly baseDir: string,
     private readonly locale: AppLocale,
     private readonly noteLinkStore?: NoteLinkStore,
+    private readonly assetStore?: AssetStore,
+    private readonly versionStore?: VersionStore,
   ) {
     this.notesDir = path.join(baseDir, "items")
     this.indexPath = path.join(baseDir, "index.json")
@@ -62,6 +66,8 @@ export class NoteStore {
 
     await mkdir(this.notesDir, { recursive: true })
     await this.noteLinkStore?.ensureReady()
+    await this.assetStore?.ensureReady()
+    await this.versionStore?.ensureReady()
 
     try {
       await stat(this.indexPath)
@@ -174,12 +180,21 @@ export class NoteStore {
       visibility: nextVisibility,
       content: nextContent,
     }
+    const contentChanged = JSON.stringify(current.content) !== JSON.stringify(nextContent)
 
     const nextNotes = notes.map((note) => (note.id === id ? this.toSummary(next) : note))
 
     await this.writeContent(id, nextContent)
     await this.writeIndex(nextNotes)
     await this.noteLinkStore?.updateOutgoing(id, extractNoteLinkIds(nextContent))
+
+    if (Object.prototype.hasOwnProperty.call(payload, "content")) {
+      await this.assetStore?.cleanupUnreferenced(id, nextContent)
+    }
+
+    if (contentChanged && next.status === "active") {
+      await this.versionStore?.maybeCreateSnapshot(next)
+    }
 
     return next
   }
@@ -251,7 +266,7 @@ export class NoteStore {
       throw new Error(this.messages.errors.noteNotFound(id))
     }
 
-    return this.create({
+    const duplicated = await this.create({
       parentId: current.parentId,
       title: this.messages.notes.duplicateTitle(current.title),
       content: current.content,
@@ -260,6 +275,21 @@ export class NoteStore {
       workspace: current.workspace,
       workspaceName: current.workspaceName,
       visibility: current.visibility,
+    })
+
+    if (!this.assetStore) {
+      return duplicated
+    }
+
+    const duplicatedContent = await this.assetStore.cloneReferencedAssets(current.content, duplicated.id)
+
+    if (duplicatedContent === current.content) {
+      return duplicated
+    }
+
+    return this.update(duplicated.id, {
+      content: duplicatedContent,
+      plainText: duplicated.plainText,
     })
   }
 
@@ -273,6 +303,8 @@ export class NoteStore {
     await Promise.all([...deletedIds].map((noteId) => rm(this.filePath(noteId), { force: true })))
     await this.writeIndex(remaining)
     await Promise.all([...deletedIds].map((noteId) => this.noteLinkStore?.removeOutgoing(noteId)))
+    await Promise.all([...deletedIds].map((noteId) => this.assetStore?.deleteNoteAssets(noteId)))
+    await Promise.all([...deletedIds].map((noteId) => this.versionStore?.deleteNoteVersions(noteId)))
 
     const fallback = await this.ensureActiveWorkspace()
     const nextNotes = await this.readIndex()

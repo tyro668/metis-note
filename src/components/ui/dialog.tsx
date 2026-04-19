@@ -76,14 +76,14 @@ export function DialogContent({
   return (
     <div className="fixed inset-0">
       <div
-        className="absolute inset-0 bg-[rgba(15,23,42,0.42)] backdrop-blur-sm"
+        className="absolute inset-0 bg-[rgba(15,23,42,0.42)] backdrop-blur-sm dark:bg-[rgba(2,6,23,0.72)]"
         onMouseDown={() => onOpenChange(false)}
       />
       <div className="relative flex min-h-full items-center justify-center p-6">
         <div
           aria-modal="true"
           className={cn(
-            "relative z-10 flex w-full flex-col overflow-hidden rounded-[12px] border border-[#e7ebf1] bg-white shadow-[0_24px_56px_rgba(15,23,42,0.22)]",
+            "relative z-10 flex w-full flex-col overflow-hidden rounded-[12px] border border-[#e7ebf1] bg-white shadow-[0_24px_56px_rgba(15,23,42,0.22)] dark:border-[#243041] dark:bg-[#0f172a]",
             className,
           )}
           role="dialog"
@@ -107,7 +107,7 @@ export function DialogTitle({
   children,
   className,
 }: React.HTMLAttributes<HTMLHeadingElement>) {
-  return <h2 className={cn("text-[19px] font-semibold tracking-[-0.02em] text-[#1f3045]", className)}>{children}</h2>
+  return <h2 className={cn("text-[19px] font-semibold tracking-[-0.02em] text-[#1f3045] dark:text-slate-100", className)}>{children}</h2>
 }
 
 export function DialogCloseButton({
@@ -122,7 +122,7 @@ export function DialogCloseButton({
   return (
     <button
       className={cn(
-        "inline-flex h-8 w-8 items-center justify-center rounded-md text-[#667085] transition hover:bg-[#f5f7fb]",
+        "inline-flex h-8 w-8 items-center justify-center rounded-md text-[#667085] transition hover:bg-[#f5f7fb] dark:text-slate-400 dark:hover:bg-[#111827]",
         className,
       )}
       title={title}

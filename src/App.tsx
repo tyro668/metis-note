@@ -3,17 +3,20 @@ import { NoteEditor } from "@/components/note-editor"
 import { NoteList } from "@/components/note-list"
 import { NoteSidebar } from "@/components/note-sidebar"
 import { SettingsPage } from "@/components/settings-page"
+import { TemplateDialog, type TemplateDialogValues } from "@/components/template-dialog"
+import { TemplatePickerDialog } from "@/components/template-picker-dialog"
 import { useI18n } from "@/i18n/provider"
+import { cn } from "@/lib/utils"
 import {
   buildNotePathTitles,
   buildPreview,
   countWords,
-  normalizeTags,
   type CreateNoteInput,
   type NoteDocument,
   type NoteSummary,
   type NoteView,
 } from "@/shared/notes"
+import type { TemplateSummary } from "@/shared/templates"
 
 function noteSnapshot(note: NoteDocument | null) {
   if (!note) {
@@ -46,10 +49,7 @@ function replaceSummary(list: NoteSummary[], note: NoteSummary) {
 }
 
 function matchesSearch(note: NoteSummary, keyword: string) {
-  return [note.title, note.preview, note.plainText, note.tags.join(" ")]
-    .join(" ")
-    .toLowerCase()
-    .includes(keyword)
+  return [note.title, note.preview, note.plainText].join(" ").toLowerCase().includes(keyword)
 }
 
 function filterNotes(notes: NoteSummary[], view: NoteView, searchValue: string) {
@@ -147,6 +147,13 @@ export default function App() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null)
+  const [templates, setTemplates] = useState<TemplateSummary[]>([])
+  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
+  const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false)
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
+  const [isSubmittingTemplateAction, setIsSubmittingTemplateAction] = useState(false)
+  const [templateActionError, setTemplateActionError] = useState<string | null>(null)
+  const [isFocusMode, setIsFocusMode] = useState(false)
   const selectedIdRef = useRef<string | null>(null)
   const draftRef = useRef<NoteDocument | null>(null)
   const saveTimerRef = useRef<number | null>(null)
@@ -166,6 +173,13 @@ export default function App() {
       mode,
       id: current.id + 1,
     }))
+  }
+
+  async function ensureEditorPreviewMode() {
+    requestEditorOpenMode("preview")
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 0)
+    })
   }
 
   useEffect(() => {
@@ -329,11 +343,25 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && isFocusMode) {
+        setIsFocusMode(false)
+        return
+      }
+
       if (!event.metaKey && !event.ctrlKey) {
         return
       }
 
       const key = event.key.toLowerCase()
+
+      if (key === "f" && event.shiftKey) {
+        if (activeScreen === "notes" && selectedIdRef.current) {
+          event.preventDefault()
+          setIsFocusMode((current) => !current)
+        }
+
+        return
+      }
 
       if (key === "n") {
         event.preventDefault()
@@ -348,6 +376,11 @@ export default function App() {
       if (key === "s") {
         event.preventDefault()
         void flushPendingSave()
+      }
+
+      if (key === "p" && activeScreen === "notes" && selectedIdRef.current) {
+        event.preventDefault()
+        void handleExportPdf()
       }
     }
 
@@ -501,6 +534,126 @@ export default function App() {
     }
   }
 
+  async function loadTemplates(options?: { silent?: boolean }) {
+    if (!options?.silent) {
+      setIsLoadingTemplates(true)
+    }
+
+    try {
+      const nextTemplates = await window.metisNote.templates.list()
+      setTemplates(nextTemplates)
+      return nextTemplates
+    } catch (error) {
+      const message = error instanceof Error ? error.message : messages.settings.templates.errors.loadFailed
+      setTemplateActionError(message)
+      return []
+    } finally {
+      if (!options?.silent) {
+        setIsLoadingTemplates(false)
+      }
+    }
+  }
+
+  async function handleOpenTemplatePicker() {
+    try {
+      await flushPendingSave()
+      setTemplateActionError(null)
+      setIsTemplatePickerOpen(true)
+      await loadTemplates()
+    } catch (error) {
+      setTemplateActionError(error instanceof Error ? error.message : messages.settings.templates.errors.loadFailed)
+    }
+  }
+
+  async function handleCreateNoteFromTemplate(templateId: string) {
+    try {
+      setIsSubmittingTemplateAction(true)
+      setTemplateActionError(null)
+      await flushPendingSave()
+      const selectedSummary = getSelectedActiveSummary()
+      const created = await window.metisNote.notes.createFromTemplate(templateId, createPayloadForSelection(selectedSummary))
+      const nextView = resolveViewForNote(created, activeViewRef.current)
+
+      activeViewRef.current = nextView
+      setActiveView(nextView)
+      setDraftNote(created)
+      requestEditorOpenMode("preview")
+      lastPersistedSnapshotRef.current = noteSnapshot(created)
+      plainTextRef.current = created.plainText
+      setLastSavedAt(created.updatedAt)
+      await refreshNotes(created.id)
+      setIsTemplatePickerOpen(false)
+      setNoticeMessage(messages.notices.createdFromTemplate(created.title))
+      setErrorMessage(null)
+    } catch (error) {
+      setTemplateActionError(error instanceof Error ? error.message : messages.settings.templates.errors.createNoteFailed)
+    } finally {
+      setIsSubmittingTemplateAction(false)
+    }
+  }
+
+  async function handleOpenSaveTemplateDialog() {
+    if (!draftNote || draftNote.status !== "active") {
+      return
+    }
+
+    await flushPendingSave()
+    setTemplateActionError(null)
+    setIsSaveTemplateDialogOpen(true)
+    void loadTemplates({ silent: true })
+  }
+
+  async function handleSaveTemplate(values: TemplateDialogValues) {
+    if (!draftRef.current || draftRef.current.status !== "active") {
+      return
+    }
+
+    setIsSubmittingTemplateAction(true)
+    setTemplateActionError(null)
+
+    try {
+      const template = await window.metisNote.templates.createFromNote(draftRef.current.id, {
+        title: values.title,
+        description: values.description,
+        category: values.category,
+      })
+      await loadTemplates({ silent: true })
+      setIsSaveTemplateDialogOpen(false)
+      setNoticeMessage(messages.notices.templateSaved(template.title))
+    } catch (error) {
+      setTemplateActionError(error instanceof Error ? error.message : messages.settings.templates.errors.createFailed)
+    } finally {
+      setIsSubmittingTemplateAction(false)
+    }
+  }
+
+  async function handleRestoreVersion(timestamp: string) {
+    if (!draftRef.current) {
+      return
+    }
+
+    try {
+      await flushPendingSave()
+      const restored = await window.metisNote.versions.restore(draftRef.current.id, timestamp)
+      const nextView = resolveViewForNote(restored, activeViewRef.current)
+
+      activeViewRef.current = nextView
+      setActiveView(nextView)
+      setDraftNote(restored)
+      requestEditorOpenMode("preview")
+      setLastSavedAt(restored.updatedAt)
+      lastPersistedSnapshotRef.current = noteSnapshot(restored)
+      plainTextRef.current = restored.plainText
+      await refreshNotes(restored.id)
+      setNoticeMessage(messages.notices.versionRestored(restored.title))
+      setErrorMessage(null)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : messages.errors.restoreVersionFailed
+      setErrorMessage(message)
+      throw error instanceof Error ? error : new Error(message)
+    }
+  }
+
   async function handleImportNote() {
     try {
       await flushPendingSave()
@@ -554,6 +707,41 @@ export default function App() {
       }
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : messages.errors.exportFailed)
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!draftRef.current) {
+      return
+    }
+
+    try {
+      await flushPendingSave()
+      await ensureEditorPreviewMode()
+      const result = await window.metisNote.notes.exportPdf(draftRef.current.id)
+
+      if (result.filePath) {
+        setNoticeMessage(messages.notices.exportedPdf(result.filePath))
+        setErrorMessage(null)
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : messages.errors.exportPdfFailed)
+    }
+  }
+
+  async function handlePrintNote() {
+    if (!draftRef.current) {
+      return
+    }
+
+    try {
+      await flushPendingSave()
+      await ensureEditorPreviewMode()
+      await window.metisNote.notes.print(draftRef.current.id)
+      setNoticeMessage(messages.notices.printStarted)
+      setErrorMessage(null)
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : messages.errors.printFailed)
     }
   }
 
@@ -699,31 +887,6 @@ export default function App() {
     )
   }
 
-  function handleTagsChange(tags: string[]) {
-    if (!draftNote || draftNote.status !== "active") {
-      return
-    }
-
-    const normalizedTags = normalizeTags(tags)
-    const next = {
-      ...draftNote,
-      tags: normalizedTags,
-    }
-
-    draftRef.current = next
-    setDraftNote(next)
-    setAllNotes((current) =>
-      current.map((note) =>
-        note.id === draftNote.id
-          ? {
-              ...note,
-              tags: normalizedTags,
-            }
-          : note,
-      ),
-    )
-  }
-
   function handleContentChange(content: NoteDocument["content"], plainText: string) {
     if (!draftNote || draftNote.status !== "active") {
       return
@@ -765,44 +928,65 @@ export default function App() {
 
   async function handleOpenSettings() {
     await flushPendingSave()
+    setIsFocusMode(false)
     setActiveScreen("settings")
   }
 
+  function handleToggleFocusMode() {
+    if (activeScreen !== "notes" || !draftRef.current) {
+      return
+    }
+
+    setIsFocusMode((current) => !current)
+  }
+
   return (
-    <main className="h-screen overflow-hidden bg-[#eef2f7] text-foreground">
-      <section className="flex h-full w-full flex-col overflow-hidden bg-white">
+    <main
+      className={cn(
+        "h-screen overflow-hidden bg-[#eef2f7] text-foreground transition-colors dark:bg-[#020817]",
+        isFocusMode && "bg-[#edf2ff] dark:bg-[#020617]",
+      )}
+    >
+      <section className="flex h-full w-full flex-col overflow-hidden bg-white dark:bg-[#020817]">
         <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
-          <NoteSidebar
-            activeScreen={activeScreen}
-            activeView={activeView}
-            counts={counts}
-            onOpenSettings={() => {
-              void handleOpenSettings()
-            }}
-            onViewChange={handleViewChange}
-          />
+          {!isFocusMode ? (
+            <NoteSidebar
+              activeScreen={activeScreen}
+              activeView={activeView}
+              counts={counts}
+              onOpenSettings={() => {
+                void handleOpenSettings()
+              }}
+              onViewChange={handleViewChange}
+            />
+          ) : null}
 
           {activeScreen === "notes" ? (
             <>
-              <NoteList
-                notes={visibleNotes}
-                selectedNoteId={selectedNoteId}
-                searchValue={searchValue}
-                activeView={activeView}
-                isLoading={isBooting}
-                noticeMessage={noticeMessage}
-                searchInputRef={searchInputRef}
-                onSearchChange={setSearchValue}
-                onCreateNote={handleCreateNote}
-                onImportNote={handleImportNote}
-                onSelectNote={handleSelectNote}
-                onTogglePin={handleTogglePin}
-                onMoveToTrash={handleMoveToTrash}
-                onRestoreNote={handleRestoreNote}
-                onDeleteForever={handleDeleteForever}
-              />
+              {!isFocusMode ? (
+                <NoteList
+                  notes={visibleNotes}
+                  selectedNoteId={selectedNoteId}
+                  searchValue={searchValue}
+                  activeView={activeView}
+                  isLoading={isBooting}
+                  noticeMessage={noticeMessage}
+                  searchInputRef={searchInputRef}
+                  onSearchChange={setSearchValue}
+                  onCreateNote={handleCreateNote}
+                  onCreateFromTemplate={() => {
+                    void handleOpenTemplatePicker()
+                  }}
+                  onImportNote={handleImportNote}
+                  onSelectNote={handleSelectNote}
+                  onTogglePin={handleTogglePin}
+                  onMoveToTrash={handleMoveToTrash}
+                  onRestoreNote={handleRestoreNote}
+                  onDeleteForever={handleDeleteForever}
+                />
+              ) : null}
 
-              <div className="min-h-0 min-w-0 flex-1 border-t border-[#edf1f7] xl:border-t-0">
+              <div className={cn("min-h-0 min-w-0 flex-1 border-t border-[#edf1f7] dark:border-[#1f2937] xl:border-t-0", isFocusMode && "border-t-0")}>
                 <NoteEditor
                   key={draftNote?.id ?? "empty"}
                   allNotes={allNotes}
@@ -815,7 +999,6 @@ export default function App() {
                   errorMessage={errorMessage}
                   lastSavedAt={lastSavedAt}
                   onTitleChange={handleTitleChange}
-                  onTagsChange={handleTagsChange}
                   onContentChange={handleContentChange}
                   onMoveToTrash={() => {
                     if (draftNote) {
@@ -830,8 +1013,18 @@ export default function App() {
                   onExportNote={() => {
                     void handleExportNote()
                   }}
+                  onExportPdf={() => {
+                    void handleExportPdf()
+                  }}
+                  onPrintNote={() => {
+                    void handlePrintNote()
+                  }}
+                  onSaveAsTemplate={() => handleOpenSaveTemplateDialog()}
                   onCommitEdits={() => flushPendingSave()}
+                  onRestoreVersion={handleRestoreVersion}
                   onOpenLinkedNote={handleOpenLinkedNote}
+                  isFocusMode={isFocusMode}
+                  onToggleFocusMode={handleToggleFocusMode}
                 />
               </div>
             </>
@@ -842,6 +1035,57 @@ export default function App() {
           )}
         </div>
       </section>
+
+      <TemplatePickerDialog
+        open={isTemplatePickerOpen}
+        templates={templates}
+        isLoading={isLoadingTemplates}
+        isSubmitting={isSubmittingTemplateAction}
+        errorMessage={templateActionError}
+        title={messages.settings.templates.picker.title}
+        closeLabel={messages.settings.templates.dialog.close}
+        createLabel={messages.settings.templates.picker.create}
+        cancelLabel={messages.settings.templates.dialog.cancel}
+        loadingLabel={messages.settings.templates.loading}
+        emptyLabel={messages.settings.templates.empty}
+        builtInLabel={messages.settings.templates.builtInBadge}
+        customLabel={messages.settings.templates.customBadge}
+        onOpenChange={(open) => {
+          setIsTemplatePickerOpen(open)
+          if (!open) {
+            setTemplateActionError(null)
+          }
+        }}
+        onSubmit={(templateId) => handleCreateNoteFromTemplate(templateId)}
+      />
+
+      <TemplateDialog
+        open={isSaveTemplateDialogOpen}
+        title={messages.settings.templates.dialog.saveCurrentTitle}
+        closeLabel={messages.settings.templates.dialog.close}
+        submitLabel={messages.settings.templates.dialog.save}
+        cancelLabel={messages.settings.templates.dialog.cancel}
+        titleLabel={messages.settings.templates.fields.title}
+        descriptionLabel={messages.settings.templates.fields.description}
+        categoryLabel={messages.settings.templates.fields.category}
+        titlePlaceholder={messages.settings.templates.placeholders.title}
+        descriptionPlaceholder={messages.settings.templates.placeholders.description}
+        categoryPlaceholder={messages.settings.templates.placeholders.category}
+        errorMessage={templateActionError}
+        isSubmitting={isSubmittingTemplateAction}
+        initialValues={{
+          title: draftNote?.title ?? "",
+          description: draftNote?.preview ?? "",
+          category: messages.settings.templates.customCategoryFallback,
+        }}
+        onOpenChange={(open) => {
+          setIsSaveTemplateDialogOpen(open)
+          if (!open) {
+            setTemplateActionError(null)
+          }
+        }}
+        onSubmit={handleSaveTemplate}
+      />
     </main>
   )
 }

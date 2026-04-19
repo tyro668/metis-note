@@ -43,7 +43,9 @@ function NavButton({
       type="button"
       className={cn(
         "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-sm transition",
-        active ? "bg-[#e8f0ff] font-medium text-[#2f6ef6]" : "text-[#475467] hover:bg-white/75",
+        active
+          ? "bg-[#e8f0ff] font-medium text-[#2f6ef6] dark:bg-[#13233f] dark:text-[#8eb8ff]"
+          : "text-[#475467] hover:bg-white/75 dark:text-slate-400 dark:hover:bg-[#111827]",
       )}
       onClick={onClick}
     >
@@ -51,7 +53,9 @@ function NavButton({
         <Icon className="h-[18px] w-[18px] shrink-0" />
         <span className="truncate">{label}</span>
       </span>
-      <span className={cn("shrink-0 text-xs", active ? "text-[#2f6ef6]" : "text-[#98a2b3]")}>{count}</span>
+      <span className={cn("shrink-0 text-xs", active ? "text-[#2f6ef6] dark:text-[#8eb8ff]" : "text-[#98a2b3] dark:text-slate-500")}>
+        {count}
+      </span>
     </button>
   )
 }
@@ -65,7 +69,7 @@ export function NoteSidebar({ activeScreen, activeView, counts, onViewChange, on
   }
 
   return (
-    <aside className="flex w-full shrink-0 flex-col overflow-hidden border-b border-[#eceff4] bg-[linear-gradient(180deg,#f7faff,#f3f7fd)] xl:w-[184px] xl:border-b-0 xl:border-r">
+    <aside className="sidebar flex w-full shrink-0 flex-col overflow-hidden border-b border-[#eceff4] bg-[linear-gradient(180deg,#f7faff,#f3f7fd)] dark:border-[#1f2937] dark:bg-[linear-gradient(180deg,#081120,#0b1323)] xl:w-[184px] xl:border-b-0 xl:border-r">
       {isMac ? <div className="window-chrome-spacer h-10 shrink-0" /> : null}
 
       <ScrollArea className="min-h-0 flex-1 px-3 py-4">
@@ -83,12 +87,14 @@ export function NoteSidebar({ activeScreen, activeView, counts, onViewChange, on
         </div>
       </ScrollArea>
 
-      <div className="border-t border-[#e7edf6] px-3 py-3">
+      <div className="border-t border-[#e7edf6] px-3 py-3 dark:border-[#1f2937]">
         <button
           type="button"
           className={cn(
             "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition",
-            activeScreen === "settings" ? "bg-[#e8f0ff] font-medium text-[#2f6ef6]" : "text-[#475467] hover:bg-white/75",
+            activeScreen === "settings"
+              ? "bg-[#e8f0ff] font-medium text-[#2f6ef6] dark:bg-[#13233f] dark:text-[#8eb8ff]"
+              : "text-[#475467] hover:bg-white/75 dark:text-slate-400 dark:hover:bg-[#111827]",
           )}
           onClick={onOpenSettings}
         >

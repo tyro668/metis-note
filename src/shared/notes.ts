@@ -232,6 +232,85 @@ export function countWords(text: string) {
   return text.replace(/\s+/g, "").length
 }
 
+export function extractPlainTextFromContent(content: JSONContent | null | undefined) {
+  const parts: string[] = []
+  const blockTypes = new Set([
+    "paragraph",
+    "heading",
+    "blockquote",
+    "bulletList",
+    "orderedList",
+    "taskList",
+    "taskItem",
+    "listItem",
+    "table",
+    "tableRow",
+    "tableCell",
+    "tableHeader",
+    "codeBlock",
+    "mathBlock",
+    "details",
+    "detailsSummary",
+    "detailsContent",
+    "horizontalRule",
+    "image",
+    "fileAttachment",
+  ])
+
+  function append(value: string | null | undefined) {
+    if (!value) {
+      return
+    }
+
+    parts.push(value)
+  }
+
+  function visit(node: JSONContent | null | undefined) {
+    if (!node) {
+      return
+    }
+
+    switch (node.type) {
+      case "text":
+        append(node.text)
+        break
+      case "noteLink":
+        append(typeof node.attrs?.title === "string" ? node.attrs.title : "")
+        break
+      case "image":
+        append(typeof node.attrs?.alt === "string" ? node.attrs.alt : "")
+        break
+      case "fileAttachment":
+        append(typeof node.attrs?.filename === "string" ? node.attrs.filename : "")
+        break
+      case "mathBlock":
+        append(typeof node.attrs?.latex === "string" ? node.attrs.latex : "")
+        break
+      case "horizontalRule":
+        append("\n")
+        break
+      default:
+        break
+    }
+
+    for (const child of node.content ?? []) {
+      visit(child)
+    }
+
+    if (node.type && blockTypes.has(node.type)) {
+      append("\n")
+    }
+  }
+
+  visit(content ?? undefined)
+
+  return parts
+    .join("")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim()
+}
+
 export function isRecentDate(value: string, days = RECENT_NOTE_DAYS) {
   const ageMs = Date.now() - Date.parse(value)
 

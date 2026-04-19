@@ -1,3 +1,6 @@
+@import "highlight.js/styles/github.css";
+@import "katex/dist/katex.min.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -20,6 +23,22 @@
     --radius: 0.9rem;
   }
 
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 96%;
+    --muted: 221 39% 14%;
+    --muted-foreground: 215 20% 68%;
+    --card: 222 47% 11%;
+    --card-foreground: 210 40% 96%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --accent: 221 39% 14%;
+    --accent-foreground: 210 40% 96%;
+    --ring: 217 91% 60%;
+  }
+
   * {
     @apply border-border;
   }
@@ -35,6 +54,10 @@
     @apply antialiased text-foreground;
     margin: 0;
     background: linear-gradient(180deg, #eef2f7 0%, #f4f7fb 100%);
+  }
+
+  .dark body {
+    background: linear-gradient(180deg, #020817 0%, #07101f 100%);
   }
 
   ::selection {
@@ -103,12 +126,58 @@
 .ProseMirror ol,
 .ProseMirror blockquote,
 .ProseMirror pre {
-  margin: 1rem 0;
+  margin: 0.85rem 0;
 }
 
 .ProseMirror ul,
 .ProseMirror ol {
   padding-left: 1.5rem;
+}
+
+.ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+
+.ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0.55rem 0;
+}
+
+.ProseMirror ul[data-type="taskList"] li > label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.18rem;
+}
+
+.ProseMirror ul[data-type="taskList"] li input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.ProseMirror ul[data-type="taskList"] li > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div > p,
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div li,
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div blockquote {
+  color: #98a2b3;
+}
+
+.ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  text-decoration: line-through;
+  text-decoration-color: rgba(152, 162, 179, 0.88);
+}
+
+.ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
+  margin-top: 0.4rem;
 }
 
 .ProseMirror li {
@@ -179,9 +248,34 @@
 .ProseMirror blockquote {
   border-left: 4px solid rgba(147, 197, 253, 0.95);
   background: rgba(239, 244, 255, 0.88);
-  padding: 1rem 1.25rem;
+  margin: 0.7rem 0;
+  padding: 0.75rem 1rem;
   border-radius: 0 1rem 1rem 0;
   color: rgba(71, 84, 103, 0.96);
+  line-height: 1.65;
+}
+
+.ProseMirror blockquote p {
+  margin: 0.45rem 0;
+}
+
+.ProseMirror blockquote p:first-child {
+  margin-top: 0;
+}
+
+.ProseMirror blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.ProseMirror blockquote + blockquote {
+  margin-top: 0.45rem;
+}
+
+.ProseMirror mark.metis-highlight {
+  border-radius: 0.35rem;
+  padding: 0.08rem 0.18rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .ProseMirror code {
@@ -195,15 +289,510 @@
   background: rgba(248, 250, 252, 0.96);
   color: rgba(52, 64, 84, 0.96);
   border: 1px solid rgba(226, 232, 240, 0.96);
-  padding: 1rem;
-  border-radius: 1rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.85rem;
   overflow-x: auto;
 }
 
 .ProseMirror pre code {
+  display: block;
   background: transparent;
   border-radius: 0;
   padding: 0;
   color: inherit;
-  font-size: inherit;
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.ProseMirror pre .hljs {
+  display: block;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+/* Code block toolbar (language selector + copy button) */
+.code-block-wrapper {
+  position: relative;
+  margin: 1rem 0;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 0.85rem;
+  background: rgba(248, 250, 252, 0.96);
+  overflow: hidden;
+}
+
+.code-block-wrapper pre {
+  border: none !important;
+  border-radius: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+}
+
+.code-block-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.96);
+  user-select: none;
+}
+
+.code-block-lang-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.35rem;
+  color: rgba(100, 116, 139, 1);
+  transition: background 0.15s;
+}
+
+.code-block-lang-btn:hover {
+  background: rgba(226, 232, 240, 0.6);
+}
+
+.code-block-lang-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
+  min-width: 160px;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 0.6rem;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+  overflow: hidden;
+}
+
+.code-block-lang-search {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.96);
+  background: transparent;
+  font-size: 0.8rem;
+  outline: none;
+}
+
+.code-block-lang-list {
+  overflow-y: auto;
+  max-height: 200px;
+  padding: 0.25rem;
+}
+
+.code-block-lang-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.3rem;
+  font-size: 0.8rem;
+  color: rgba(52, 64, 84, 1);
+  transition: background 0.1s;
+}
+
+.code-block-lang-item:hover {
+  background: rgba(241, 245, 249, 1);
+}
+
+.code-block-lang-item-active {
+  background: rgba(59, 130, 246, 0.08);
+  font-weight: 600;
+  color: rgba(37, 99, 235, 1);
+}
+
+.code-block-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: 0.35rem;
+  color: rgba(100, 116, 139, 1);
+  transition: background 0.15s, color 0.15s;
+}
+
+.code-block-copy-btn:hover {
+  background: rgba(226, 232, 240, 0.6);
+  color: rgba(52, 64, 84, 1);
+}
+
+/* Dark mode code block toolbar */
+.dark .code-block-wrapper {
+  border-color: rgba(48, 54, 61, 0.96);
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+.dark .code-block-toolbar {
+  border-bottom-color: rgba(48, 54, 61, 0.96);
+}
+
+.dark .code-block-lang-btn {
+  color: rgba(148, 163, 184, 1);
+}
+
+.dark .code-block-lang-btn:hover {
+  background: rgba(30, 41, 59, 0.8);
+}
+
+.dark .code-block-lang-dropdown {
+  border-color: rgba(48, 54, 61, 0.96);
+  background: #1e293b;
+  box-shadow: 0 4px 12px rgba(2, 6, 23, 0.4);
+}
+
+.dark .code-block-lang-search {
+  border-bottom-color: rgba(48, 54, 61, 0.96);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+.dark .code-block-lang-item {
+  color: rgba(203, 213, 225, 0.94);
+}
+
+.dark .code-block-lang-item:hover {
+  background: rgba(30, 41, 59, 1);
+}
+
+.dark .code-block-lang-item-active {
+  background: rgba(59, 130, 246, 0.15);
+  color: rgba(96, 165, 250, 1);
+}
+
+.dark .code-block-copy-btn {
+  color: rgba(148, 163, 184, 1);
+}
+
+.dark .code-block-copy-btn:hover {
+  background: rgba(30, 41, 59, 0.8);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+.dark .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div > p,
+.dark .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div li,
+.dark .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div blockquote {
+  color: #64748b;
+}
+
+.dark .ProseMirror a {
+  color: #8ab4ff;
+}
+
+.dark .ProseMirror a:hover {
+  color: #bfd5ff;
+}
+
+.dark .ProseMirror .tableWrapper {
+  border-color: rgba(71, 85, 105, 0.8);
+  background: rgba(15, 23, 42, 0.88);
+}
+
+.dark .ProseMirror th,
+.dark .ProseMirror td {
+  border-right-color: rgba(71, 85, 105, 0.8);
+  border-bottom-color: rgba(71, 85, 105, 0.8);
+}
+
+.dark .ProseMirror th {
+  background: rgba(15, 23, 42, 0.96);
+  color: rgba(226, 232, 240, 0.96);
+}
+
+.dark .ProseMirror blockquote {
+  border-left-color: rgba(96, 165, 250, 0.9);
+  background: rgba(15, 23, 42, 0.8);
+  color: rgba(203, 213, 225, 0.94);
+}
+
+.dark .ProseMirror code {
+  background: rgba(96, 165, 250, 0.14);
+}
+
+.ProseMirror [data-type="details"] {
+  position: relative;
+  margin: 1rem 0;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 1rem;
+  background: rgba(248, 250, 252, 0.72);
+  overflow: hidden;
+}
+
+.ProseMirror [data-type="details"] > button {
+  position: absolute;
+  top: 1rem;
+  left: 0.9rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ProseMirror [data-type="details"] > button::before {
+  content: "▸";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(102, 112, 133, 1);
+  font-size: 0.9rem;
+}
+
+.ProseMirror [data-type="details"].is-open > button {
+  transform: rotate(90deg);
+}
+
+.ProseMirror .metis-note-details-summary {
+  margin: 0;
+  min-height: 3rem;
+  padding: 0.9rem 1rem 0.9rem 2.5rem;
+  font-weight: 600;
+  color: rgba(31, 48, 69, 1);
+}
+
+.ProseMirror .metis-note-details-summary p,
+.ProseMirror .metis-note-details-content p:first-child {
+  margin-top: 0;
+}
+
+.ProseMirror .metis-note-details-content {
+  padding: 0 1rem 1rem 2.5rem;
+}
+
+.ProseMirror .metis-note-details-content > :last-child {
+  margin-bottom: 0;
+}
+
+.ProseMirror .Tiptap-mathematics-render,
+.ProseMirror .Tiptap-mathematics-editor {
+  display: inline-block;
+  border-radius: 0.5rem;
+}
+
+.ProseMirror .Tiptap-mathematics-render {
+  padding: 0.1rem 0.25rem;
+  cursor: pointer;
+}
+
+.ProseMirror .Tiptap-mathematics-render .katex {
+  font-size: 1.05em;
+}
+
+.metis-math-block {
+  margin: 1rem 0;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 1rem;
+  background: rgba(250, 250, 255, 0.96);
+  padding: 1rem;
+}
+
+.metis-math-block-input {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  border-radius: 0.9rem;
+  background: #fff;
+  padding: 0.85rem 1rem;
+  color: rgba(52, 64, 84, 0.96);
+  font-family: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", monospace;
+  font-size: 0.92rem;
+  line-height: 1.6;
+  outline: none;
+}
+
+.metis-math-block-input:focus {
+  border-color: rgba(59, 130, 246, 0.85);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.metis-math-block-preview {
+  margin-top: 0.85rem;
+  overflow-x: auto;
+}
+
+.metis-math-block[data-selected="false"] .metis-math-block-preview {
+  margin-top: 0;
+}
+
+.metis-drag-handle {
+  width: 34px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-right: 10px;
+  border: none;
+  background: transparent;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+.metis-drag-handle-visual {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(226, 232, 240, 0.96);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.98);
+  color: rgba(152, 162, 179, 1);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
+  pointer-events: none;
+}
+
+.metis-drag-handle:hover .metis-drag-handle-visual {
+  background: rgba(241, 245, 249, 1);
+  color: rgba(71, 84, 103, 1);
+}
+
+.metis-drag-handle:active {
+  cursor: grabbing;
+}
+
+.dark .ProseMirror pre {
+  background: #0d1117;
+  color: #c9d1d9;
+  border-color: rgba(48, 54, 61, 0.96);
+}
+
+.dark .metis-math-block-input {
+  border-color: rgba(71, 85, 105, 0.9);
+  background: rgba(15, 23, 42, 0.96);
+  color: rgba(226, 232, 240, 0.94);
+}
+
+.dark .hljs-comment,
+.dark .hljs-quote {
+  color: #8b949e;
+}
+
+.dark .hljs-variable,
+.dark .hljs-template-variable,
+.dark .hljs-attribute,
+.dark .hljs-tag,
+.dark .hljs-name,
+.dark .hljs-regexp,
+.dark .hljs-link,
+.dark .hljs-selector-id,
+.dark .hljs-selector-class {
+  color: #ff7b72;
+}
+
+.dark .hljs-number,
+.dark .hljs-meta,
+.dark .hljs-built_in,
+.dark .hljs-builtin-name,
+.dark .hljs-literal,
+.dark .hljs-type,
+.dark .hljs-params {
+  color: #79c0ff;
+}
+
+.dark .hljs-string,
+.dark .hljs-symbol,
+.dark .hljs-bullet {
+  color: #a5d6ff;
+}
+
+.dark .hljs-title,
+.dark .hljs-section {
+  color: #d2a8ff;
+}
+
+.dark .hljs-keyword,
+.dark .hljs-selector-tag {
+  color: #ff7b72;
+}
+
+.dark .ProseMirror [data-type="details"] {
+  border-color: rgba(71, 85, 105, 0.8);
+  background: rgba(15, 23, 42, 0.68);
+}
+
+.dark .ProseMirror [data-type="details"] > button::before,
+.dark .ProseMirror .metis-note-details-summary,
+.dark .metis-math-block-input,
+.dark .metis-drag-handle:hover .metis-drag-handle-visual {
+  color: rgba(226, 232, 240, 0.94);
+}
+
+.dark .metis-math-block {
+  border-color: rgba(71, 85, 105, 0.8);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.dark .metis-drag-handle-visual {
+  border-color: rgba(51, 65, 85, 0.96);
+  background: rgba(15, 23, 42, 0.98);
+  color: rgba(148, 163, 184, 1);
+  box-shadow: 0 4px 14px rgba(2, 6, 23, 0.42);
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    background: #fff !important;
+  }
+
+  .sidebar,
+  .note-list,
+  .toolbar,
+  .backlinks-panel,
+  .save-status,
+  .editor-actions,
+  .window-chrome-spacer {
+    display: none !important;
+  }
+
+  .note-editor-shell,
+  .note-editor-scroll {
+    background: #fff !important;
+    color: #0f172a !important;
+    overflow: visible !important;
+  }
+
+  .note-editor-header {
+    border: none !important;
+    padding: 0 0 1rem 0 !important;
+  }
+
+  .note-editor-page {
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .ProseMirror {
+    min-height: auto !important;
+  }
+
+  .ProseMirror h1,
+  .ProseMirror h2,
+  .ProseMirror h3 {
+    page-break-after: avoid;
+  }
+
+  .ProseMirror pre,
+  .ProseMirror blockquote,
+  .ProseMirror table,
+  .ProseMirror .tableWrapper,
+  .metis-math-block,
+  .ProseMirror img {
+    page-break-inside: avoid;
+  }
+
+  .ProseMirror img {
+    max-width: 100%;
+  }
 }

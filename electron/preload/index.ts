@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron"
+import type { FileAssetResult, ImageAssetResult, RendererAssetImportPayload } from "../../src/shared/assets"
 import type {
   LlmConnectionResult,
   LlmModelConfig,
@@ -10,12 +11,28 @@ import type {
   SaveLlmModelInput,
 } from "../../src/shared/llm"
 import type { CreateNoteInput, NoteLinkResolutionMap, NoteSummary, UpdateNoteInput } from "../../src/shared/notes"
+import type { SaveTemplateInput, TemplateDocument, TemplateSummary } from "../../src/shared/templates"
+import type { NoteVersionContent, VersionSummary } from "../../src/shared/versions"
+
+function normalizeAssetPayload(payload: RendererAssetImportPayload) {
+  return {
+    ...payload,
+    bytes:
+      payload.bytes instanceof Uint8Array
+        ? payload.bytes
+        : payload.bytes
+          ? new Uint8Array(payload.bytes)
+          : undefined,
+  }
+}
 
 contextBridge.exposeInMainWorld("metisNote", {
   notes: {
     list: () => ipcRenderer.invoke("notes:list"),
     get: (id: string) => ipcRenderer.invoke("notes:get", id),
     create: (payload?: CreateNoteInput) => ipcRenderer.invoke("notes:create", payload),
+    createFromTemplate: (templateId: string, payload?: CreateNoteInput) =>
+      ipcRenderer.invoke("notes:createFromTemplate", templateId, payload),
     update: (id: string, payload: UpdateNoteInput) => ipcRenderer.invoke("notes:update", id, payload),
     trash: (id: string) => ipcRenderer.invoke("notes:trash", id),
     restore: (id: string) => ipcRenderer.invoke("notes:restore", id),
@@ -23,10 +40,34 @@ contextBridge.exposeInMainWorld("metisNote", {
     deleteForever: (id: string) => ipcRenderer.invoke("notes:deleteForever", id),
     importMarkdown: (payload?: CreateNoteInput) => ipcRenderer.invoke("notes:importMarkdown", payload),
     exportMarkdown: (id: string) => ipcRenderer.invoke("notes:exportMarkdown", id),
+    exportPdf: (id: string) => ipcRenderer.invoke("notes:exportPdf", id),
+    print: (id: string) => ipcRenderer.invoke("notes:print", id),
   },
   noteLinks: {
     getBacklinks: (noteId: string) => ipcRenderer.invoke("noteLinks:getBacklinks", noteId) as Promise<NoteSummary[]>,
     resolveLinks: (noteIds: string[]) => ipcRenderer.invoke("noteLinks:resolveLinks", noteIds) as Promise<NoteLinkResolutionMap>,
+  },
+  versions: {
+    list: (noteId: string) => ipcRenderer.invoke("versions:list", noteId) as Promise<VersionSummary[]>,
+    get: (noteId: string, timestamp: string) => ipcRenderer.invoke("versions:get", noteId, timestamp) as Promise<NoteVersionContent | null>,
+    restore: (noteId: string, timestamp: string) => ipcRenderer.invoke("versions:restore", noteId, timestamp),
+  },
+  templates: {
+    list: () => ipcRenderer.invoke("templates:list") as Promise<TemplateSummary[]>,
+    get: (id: string) => ipcRenderer.invoke("templates:get", id) as Promise<TemplateDocument | null>,
+    createFromNote: (noteId: string, payload: SaveTemplateInput) =>
+      ipcRenderer.invoke("templates:createFromNote", noteId, payload) as Promise<TemplateDocument>,
+    update: (id: string, payload: SaveTemplateInput) => ipcRenderer.invoke("templates:update", id, payload) as Promise<TemplateDocument>,
+    delete: (id: string) => ipcRenderer.invoke("templates:delete", id) as Promise<TemplateDocument>,
+  },
+  assets: {
+    importImage: (payload: RendererAssetImportPayload) =>
+      ipcRenderer.invoke("assets:importImage", normalizeAssetPayload(payload)) as Promise<ImageAssetResult>,
+    importFile: (payload: RendererAssetImportPayload) =>
+      ipcRenderer.invoke("assets:importFile", normalizeAssetPayload(payload)) as Promise<FileAssetResult>,
+    pickAndImportImage: (noteId: string) => ipcRenderer.invoke("assets:pickAndImportImage", noteId) as Promise<ImageAssetResult | null>,
+    pickAndImportFile: (noteId: string) => ipcRenderer.invoke("assets:pickAndImportFile", noteId) as Promise<FileAssetResult | null>,
+    openFile: (source: string) => ipcRenderer.invoke("assets:openFile", source) as Promise<void>,
   },
   llmModels: {
     list: () => ipcRenderer.invoke("llmModels:list") as Promise<LlmModelConfig[]>,

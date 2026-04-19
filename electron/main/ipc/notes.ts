@@ -1,11 +1,14 @@
 import { readFile, writeFile } from "node:fs/promises"
+import path from "node:path"
 import { BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type SaveDialogOptions } from "electron"
 import { getMessages, type AppLocale } from "../../../src/shared/i18n"
-import type { CreateNoteInput, UpdateNoteInput } from "../../../src/shared/notes"
+import { extractPlainTextFromContent, type CreateNoteInput, type UpdateNoteInput } from "../../../src/shared/notes"
 import { defaultExportPath, documentFromMarkdown, fallbackTitleFromPath, noteToMarkdown } from "../services/note-markdown"
+import { AssetStore } from "../services/asset-store"
 import { NoteStore } from "../services/note-store"
+import { TemplateStore } from "../services/template-store"
 
-export function registerNoteHandlers(store: NoteStore, locale: AppLocale) {
+export function registerNoteHandlers(store: NoteStore, assetStore: AssetStore, templateStore: TemplateStore, locale: AppLocale) {
   const messages = getMessages(locale)
   ipcMain.removeHandler("notes:list")
   ipcMain.removeHandler("notes:get")
@@ -17,6 +20,9 @@ export function registerNoteHandlers(store: NoteStore, locale: AppLocale) {
   ipcMain.removeHandler("notes:deleteForever")
   ipcMain.removeHandler("notes:importMarkdown")
   ipcMain.removeHandler("notes:exportMarkdown")
+  ipcMain.removeHandler("notes:exportPdf")
+  ipcMain.removeHandler("notes:print")
+  ipcMain.removeHandler("notes:createFromTemplate")
 
   ipcMain.handle("notes:list", async () => {
     return store.list()
@@ -28,6 +34,31 @@ export function registerNoteHandlers(store: NoteStore, locale: AppLocale) {
 
   ipcMain.handle("notes:create", async (_event, payload?: CreateNoteInput) => {
     return store.create(payload)
+  })
+
+  ipcMain.handle("notes:createFromTemplate", async (_event, templateId: string, payload?: CreateNoteInput) => {
+    const template = await templateStore.get(templateId)
+
+    if (!template) {
+      throw new Error(messages.settings.templates.errors.notFound)
+    }
+
+    const created = await store.create({
+      ...(payload ?? {}),
+      title: template.title,
+      content: template.content,
+      plainText: extractPlainTextFromContent(template.content),
+    })
+    const clonedContent = await assetStore.cloneReferencedAssets(template.content, created.id)
+
+    if (JSON.stringify(clonedContent) === JSON.stringify(template.content)) {
+      return created
+    }
+
+    return store.update(created.id, {
+      content: clonedContent,
+      plainText: extractPlainTextFromContent(clonedContent),
+    })
   })
 
   ipcMain.handle("notes:update", async (_event, id: string, payload: UpdateNoteInput) => {
@@ -75,10 +106,18 @@ export function registerNoteHandlers(store: NoteStore, locale: AppLocale) {
 
     const filePath = selection.filePaths[0]
     const source = await readFile(filePath, "utf-8")
-    const imported = await store.create({
+    const created = await store.create({
       ...(payload ?? {}),
       ...documentFromMarkdown(source, fallbackTitleFromPath(filePath)),
     })
+    const importedContent = await assetStore.importContentAssets(created.id, created.content, path.dirname(filePath))
+    const imported =
+      JSON.stringify(importedContent) === JSON.stringify(created.content)
+        ? created
+        : await store.update(created.id, {
+            content: importedContent,
+            plainText: created.plainText,
+          })
 
     return {
       filePath,
@@ -114,10 +153,91 @@ export function registerNoteHandlers(store: NoteStore, locale: AppLocale) {
       }
     }
 
-    await writeFile(result.filePath, noteToMarkdown(note), "utf-8")
+    const exportDir = path.join(
+      path.dirname(result.filePath),
+      `${path.basename(result.filePath, path.extname(result.filePath))}_assets`,
+    )
+    const exportedAssets = await assetStore.exportReferencedAssets(note.content, exportDir)
+
+    await writeFile(
+      result.filePath,
+      noteToMarkdown(note, {
+        resolveAssetSource: (source) => exportedAssets.get(source) ?? source,
+      }),
+      "utf-8",
+    )
 
     return {
       filePath: result.filePath,
     }
+  })
+
+  ipcMain.handle("notes:exportPdf", async (event, id: string) => {
+    const parentWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined
+    const note = await store.get(id)
+
+    if (!note) {
+      throw new Error(messages.errors.noteNotFound(id))
+    }
+
+    const defaultPath = defaultExportPath(note.title).replace(/\.md$/i, ".pdf")
+    const dialogOptions: SaveDialogOptions = {
+      title: messages.dialogs.exportPdfTitle,
+      defaultPath,
+      filters: [
+        {
+          name: messages.dialogs.pdfFilterName,
+          extensions: ["pdf"],
+        },
+      ],
+    }
+    const result = parentWindow
+      ? await dialog.showSaveDialog(parentWindow, dialogOptions)
+      : await dialog.showSaveDialog(dialogOptions)
+
+    if (result.canceled || !result.filePath) {
+      return {
+        filePath: null,
+      }
+    }
+
+    await event.sender.executeJavaScript("window.scrollTo(0, 0)")
+    const pdfData = await event.sender.printToPDF({
+      pageSize: "A4",
+      printBackground: true,
+      preferCSSPageSize: true,
+    })
+
+    await writeFile(result.filePath, pdfData)
+
+    return {
+      filePath: result.filePath,
+    }
+  })
+
+  ipcMain.handle("notes:print", async (event, id: string) => {
+    const note = await store.get(id)
+
+    if (!note) {
+      throw new Error(messages.errors.noteNotFound(id))
+    }
+
+    await event.sender.executeJavaScript("window.scrollTo(0, 0)")
+
+    await new Promise<void>((resolve, reject) => {
+      event.sender.print(
+        {
+          printBackground: true,
+        },
+        (success, failureReason) => {
+          if (success) {
+            resolve()
+            return
+          }
+
+          reject(new Error(failureReason || messages.errors.printFailed))
+        },
+      )
+    })
   })
 }

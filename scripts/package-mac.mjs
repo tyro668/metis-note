@@ -1,4 +1,4 @@
-import { mkdir, rm, utimes } from "node:fs/promises"
+import { cp, mkdir, rm, utimes } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { appName, bundleId, copyAppPayload, readPackageVersion, run } from "./package-utils.mjs"
@@ -12,6 +12,8 @@ const appContainerDir = path.join(releaseDir, `${appName}-${process.platform}-${
 const appBundlePath = path.join(appContainerDir, `${appName}.app`)
 const plistPath = path.join(appBundlePath, "Contents", "Info.plist")
 const appResourcesDir = path.join(appBundlePath, "Contents", "Resources", "app")
+const customIconPath = path.join(rootDir, "build", "icon.icns")
+const appIconPath = path.join(appBundlePath, "Contents", "Resources", "electron.icns")
 
 async function main() {
   if (process.platform !== "darwin") {
@@ -23,6 +25,9 @@ async function main() {
   run(rootDir, "ditto", [electronTemplatePath, appBundlePath])
 
   await copyAppPayload(rootDir, appResourcesDir, version)
+
+  // Replace default Electron icon with custom MetisNote icon
+  await cp(customIconPath, appIconPath)
 
   run(rootDir, "plutil", ["-replace", "CFBundleDisplayName", "-string", appName, plistPath])
   run(rootDir, "plutil", ["-replace", "CFBundleName", "-string", appName, plistPath])
