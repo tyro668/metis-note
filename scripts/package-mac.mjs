@@ -1,4 +1,4 @@
-import { cp, mkdir, rm, utimes } from "node:fs/promises"
+import { cp, mkdir, rm, utimes, access } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { appName, bundleId, copyAppPayload, readPackageVersion, run } from "./package-utils.mjs"
@@ -26,8 +26,14 @@ async function main() {
 
   await copyAppPayload(rootDir, appResourcesDir, version)
 
-  // Replace default Electron icon with custom MetisNote icon
-  await cp(customIconPath, appIconPath)
+  // Fall back to the stock Electron icon when the generated .icns asset
+  // is not present in CI or other clean environments.
+  try {
+    await access(customIconPath)
+    await cp(customIconPath, appIconPath)
+  } catch {
+    console.warn(`[metis-note] Custom icon not found at ${customIconPath}; using the default Electron icon.`)
+  }
 
   run(rootDir, "plutil", ["-replace", "CFBundleDisplayName", "-string", appName, plistPath])
   run(rootDir, "plutil", ["-replace", "CFBundleName", "-string", appName, plistPath])

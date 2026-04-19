@@ -1,7 +1,7 @@
-import { cp, mkdir, rename, rm } from "node:fs/promises"
+import { mkdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { appName, copyAppPayload, readPackageVersion } from "./package-utils.mjs"
+import { appName, copyAppPayload, copyDirectory, readPackageVersion } from "./package-utils.mjs"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, "..")
@@ -20,7 +20,7 @@ async function main() {
 
   await rm(appContainerDir, { recursive: true, force: true })
   await mkdir(releaseDir, { recursive: true })
-  await cp(electronTemplateDir, appContainerDir, { recursive: true })
+  await copyDirectory(electronTemplateDir, appContainerDir)
   await copyAppPayload(rootDir, appResourcesDir, version)
 
   await rm(appExePath, { force: true })
