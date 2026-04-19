@@ -2,7 +2,7 @@ import { access, mkdir, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { appName, copyAppPayload, copyDirectory, readPackageVersion } from "./package-utils.mjs"
-import { rcedit } from "rcedit"
+import rcedit from "rcedit"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, "..")
