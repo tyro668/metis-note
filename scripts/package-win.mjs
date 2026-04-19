@@ -1,4 +1,4 @@
-import { access, mkdir, rename, rm } from "node:fs/promises"
+import { access, mkdir, readFile, rename, rm } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { appName, copyAppPayload, copyDirectory, readPackageVersion } from "./package-utils.mjs"
@@ -23,6 +23,36 @@ function toWindowsVersion(version) {
   return parts.slice(0, 4).join(".")
 }
 
+function readIcoEntries(iconBuffer) {
+  const reserved = iconBuffer.readUInt16LE(0)
+  const type = iconBuffer.readUInt16LE(2)
+  const count = iconBuffer.readUInt16LE(4)
+
+  if (reserved !== 0 || type !== 1 || count <= 0) {
+    throw new Error("Invalid ICO file.")
+  }
+
+  const entries = []
+  for (let index = 0; index < count; index += 1) {
+    const offset = 6 + index * 16
+    const bytesInRes = iconBuffer.readUInt32LE(offset + 8)
+    const imageOffset = iconBuffer.readUInt32LE(offset + 12)
+    entries.push(iconBuffer.subarray(imageOffset, imageOffset + bytesInRes))
+  }
+
+  return entries
+}
+
+async function assertExeContainsIcon(exePath, iconPath) {
+  const [iconBuffer, exeBuffer] = await Promise.all([readFile(iconPath), readFile(exePath)])
+  const iconEntries = readIcoEntries(iconBuffer)
+  const missingEntries = iconEntries.filter((entry) => !exeBuffer.includes(entry))
+
+  if (missingEntries.length > 0) {
+    throw new Error(`Packaged EXE is missing ${missingEntries.length} icon resource entries from ${iconPath}.`)
+  }
+}
+
 async function main() {
   if (process.platform !== "win32") {
     throw new Error("package-win.mjs must be run on Windows.")
@@ -37,22 +67,20 @@ async function main() {
   await rename(electronExePath, appExePath)
   const windowsVersion = toWindowsVersion(version)
 
-  try {
-    await access(customIconPath)
-    await rcedit(appExePath, {
-      icon: customIconPath,
-      "file-version": windowsVersion,
-      "product-version": windowsVersion,
-      "version-string": {
-        CompanyName: "Metis",
-        FileDescription: appName,
-        ProductName: appName,
-        OriginalFilename: `${appName}.exe`,
-      },
-    })
-  } catch (error) {
-    console.warn(`[metis-note] Failed to apply Windows icon metadata from ${customIconPath}.`, error)
-  }
+  await access(customIconPath)
+  await rcedit(appExePath, {
+    icon: customIconPath,
+    "file-version": windowsVersion,
+    "product-version": windowsVersion,
+    "version-string": {
+      CompanyName: "Metis",
+      FileDescription: appName,
+      InternalFilename: appName,
+      ProductName: appName,
+      OriginalFilename: `${appName}.exe`,
+    },
+  })
+  await assertExeContainsIcon(appExePath, customIconPath)
 
   console.log(`Packaged app created at: ${appContainerDir}`)
 }
