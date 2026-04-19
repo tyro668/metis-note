@@ -145,6 +145,9 @@ npm run typecheck
 
 # 打包 macOS App
 npm run package:mac
+
+# 打包 Windows App（需在 Windows 环境执行）
+npm run package:win
 ```
 
 ## 构建产物
@@ -153,6 +156,29 @@ npm run package:mac
 
 - `release/MetisNote-darwin-arm64/MetisNote.app`
 - `release/MetisNote-darwin-arm64.zip`
+
+GitHub Actions 在 tag 构建时会自动生成并上传以下 Release 下载文件：
+
+- `MetisNote-macOS-installer-<tag>.zip`（包含 macOS `.app` 安装包目录）
+- `MetisNote-Windows-installer-<tag>.zip`（包含 Windows `.exe + resources` 安装包目录）
+
+## 重新推送构建 tag
+
+```bash
+# 示例：重新发布 v0.1.0
+git tag -d v0.1.0
+git push origin :refs/tags/v0.1.0
+
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+如果不想覆盖原 tag，可以直接创建新 tag（推荐）：
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
 
 ## 项目结构
 

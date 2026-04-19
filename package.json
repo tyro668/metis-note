@@ -9,7 +9,8 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
-    "package:mac": "npm run build && node ./scripts/package-mac.mjs"
+    "package:mac": "npm run build && node ./scripts/package-mac.mjs",
+    "package:win": "npm run build && node ./scripts/package-win.mjs"
   },
   "dependencies": {
     "@tiptap/extension-code-block-lowlight": "^2.27.2",

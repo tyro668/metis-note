@@ -22,11 +22,11 @@ jobs:
           - os: macos-latest
             label: macOS
             package_script: node ./scripts/package-mac.mjs
-            artifact_name: metis-note-macos
+            artifact_name: metis-note-macos-installer
           - os: windows-latest
             label: Windows
             package_script: node ./scripts/package-win.mjs
-            artifact_name: metis-note-windows
+            artifact_name: metis-note-windows-installer
 
     steps:
       - name: Checkout repository
@@ -66,7 +66,7 @@ jobs:
             exit 1
           fi
           version_suffix="${GITHUB_REF_NAME:-${GITHUB_SHA::7}}"
-          zip_path="release/MetisNote-macOS-${version_suffix}.zip"
+          zip_path="release/MetisNote-macOS-installer-${version_suffix}.zip"
           rm -f "${zip_path}"
           ditto -c -k --sequesterRsrc --keepParent "${app_dir}" "${zip_path}"
           echo "path=${zip_path}" >> "$GITHUB_OUTPUT"
@@ -81,7 +81,7 @@ jobs:
             throw "Packaged Windows app was not found in release/."
           }
           $versionSuffix = if ($env:GITHUB_REF_NAME) { $env:GITHUB_REF_NAME } else { $env:GITHUB_SHA.Substring(0, 7) }
-          $zipPath = Join-Path $PWD "release/MetisNote-Windows-$versionSuffix.zip"
+          $zipPath = Join-Path $PWD "release/MetisNote-Windows-installer-$versionSuffix.zip"
           if (Test-Path $zipPath) {
             Remove-Item $zipPath -Force
           }
