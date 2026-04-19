@@ -58,19 +58,24 @@ function resolveInstalledPackageDir(packageName, fromPath) {
   const entryPath = require.resolve(packageName, {
     paths: [fromPath],
   })
+  const nodeModulesMarker = `${path.sep}node_modules${path.sep}`
+  const nodeModulesIndex = entryPath.lastIndexOf(nodeModulesMarker)
+  const packageSegments = packageName.startsWith("@")
+    ? packageName.split("/").slice(0, 2)
+    : [packageName]
 
-  let currentPath = path.dirname(entryPath)
-  while (true) {
-    if (existsSync(path.join(currentPath, "package.json"))) {
-      return currentPath
-    }
-
-    const parentPath = path.dirname(currentPath)
-    if (parentPath === currentPath) {
-      throw new Error(`Unable to locate package root for ${packageName}.`)
-    }
-    currentPath = parentPath
+  if (nodeModulesIndex === -1) {
+    throw new Error(`Unable to locate node_modules root for ${packageName}.`)
   }
+
+  const nodeModulesRoot = entryPath.slice(0, nodeModulesIndex + nodeModulesMarker.length)
+  const packagePath = path.resolve(nodeModulesRoot, ...packageSegments)
+
+  if (!existsSync(path.join(packagePath, "package.json"))) {
+    throw new Error(`Unable to locate package root for ${packageName}.`)
+  }
+
+  return packagePath
 }
 
 export async function readPackageVersion(rootDir) {
@@ -130,10 +135,27 @@ export async function writeRuntimePackageJson(appResourcesDir, version) {
   await writeFile(path.join(appResourcesDir, "package.json"), JSON.stringify(runtimePackageJson, null, 2), "utf-8")
 }
 
+async function copyRuntimeAssets(rootDir, appResourcesDir) {
+  const assets = [
+    { source: path.join(rootDir, "public", "logo.svg"), destination: path.join(appResourcesDir, "assets", "logo.svg") },
+    { source: path.join(rootDir, "public", "icon.ico"), destination: path.join(appResourcesDir, "assets", "icon.ico") },
+  ]
+
+  for (const asset of assets) {
+    if (!existsSync(asset.source)) {
+      continue
+    }
+
+    await mkdir(path.dirname(asset.destination), { recursive: true })
+    await cp(asset.source, asset.destination)
+  }
+}
+
 export async function copyAppPayload(rootDir, appResourcesDir, version) {
   await mkdir(appResourcesDir, { recursive: true })
   await copyDirectory(path.join(rootDir, "dist"), path.join(appResourcesDir, "dist"))
   await copyDirectory(path.join(rootDir, "dist-electron"), path.join(appResourcesDir, "dist-electron"))
+  await copyRuntimeAssets(rootDir, appResourcesDir)
   await copyProductionNodeModules(rootDir, appResourcesDir)
   await writeRuntimePackageJson(appResourcesDir, version)
 }

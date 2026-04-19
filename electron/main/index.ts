@@ -44,6 +44,22 @@ function isSupportedExternalUrl(value: string) {
   }
 }
 
+function resolveWindowIconPath() {
+  if (process.platform === "darwin") {
+    return undefined
+  }
+
+  if (app.isPackaged) {
+    return process.platform === "win32"
+      ? path.join(process.resourcesPath, "app", "assets", "icon.ico")
+      : path.join(process.resourcesPath, "app", "assets", "logo.svg")
+  }
+
+  return process.platform === "win32"
+    ? path.join(process.cwd(), "public", "icon.ico")
+    : path.join(process.cwd(), "public", "logo.svg")
+}
+
 async function createMainWindow() {
   const mainWindow = new BrowserWindow({
     width: 1480,
@@ -52,7 +68,7 @@ async function createMainWindow() {
     minHeight: 760,
     backgroundColor: "#f6efe5",
     title: APP_NAME,
-    icon: path.join(__dirname, "../dist/logo.svg"),
+    icon: resolveWindowIconPath(),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {
       preload: path.join(__dirname, "index.mjs"),
