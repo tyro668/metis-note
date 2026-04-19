@@ -40,6 +40,9 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
+        env:
+          NODE_LLAMA_CPP_POSTINSTALL: skip
+          NODE_LLAMA_CPP_SKIP_DOWNLOAD: true
         run: npm ci --registry=https://registry.npmjs.org
 
       - name: Type check

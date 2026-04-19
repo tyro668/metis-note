@@ -72,7 +72,7 @@ async function createMainWindow() {
   mainWindow.webContents.on("will-navigate", (event, url) => {
     const currentUrl = mainWindow.webContents.getURL()
 
-    if (!currentUrl || url === currentUrl) {
+    if (!currentUrl) {
       return
     }
 
@@ -81,6 +81,19 @@ async function createMainWindow() {
     if (isSupportedExternalUrl(url)) {
       void shell.openExternal(url)
     }
+  })
+
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    console.error("[metis-note] Renderer process gone:", details.reason)
+
+    if (details.reason !== "clean-exit") {
+      mainWindow.webContents.reload()
+    }
+  })
+
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
+    console.error("[metis-note] Failed to load:", errorCode, errorDescription)
+    mainWindow.webContents.reload()
   })
 
   if (process.env.VITE_DEV_SERVER_URL) {
