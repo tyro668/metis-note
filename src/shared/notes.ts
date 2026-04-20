@@ -19,6 +19,7 @@ export interface NoteSummary {
   updatedAt: string
   wordCount: number
   isPinned: boolean
+  isFavorite: boolean
   status: NoteStatus
   tags: string[]
   workspace: NoteWorkspace
@@ -37,6 +38,7 @@ export interface CreateNoteInput {
   plainText?: string
   tags?: string[]
   isPinned?: boolean
+  isFavorite?: boolean
   workspace?: NoteWorkspace
   workspaceName?: string
   visibility?: NoteVisibility
@@ -48,6 +50,7 @@ export interface UpdateNoteInput {
   content?: JSONContent
   plainText?: string
   isPinned?: boolean
+  isFavorite?: boolean
   status?: NoteStatus
   tags?: string[]
   workspace?: NoteWorkspace

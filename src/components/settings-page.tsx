@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react"
-import { ChevronDown, Download, ExternalLink, LayoutTemplate, Plus, RefreshCw, Settings2, Shield, Sparkles, Trash2 } from "lucide-react"
+import { ChevronDown, CloudCog, Download, ExternalLink, Plus, RefreshCw, Settings2, Shield, Sparkles, Trash2 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { TemplateSettingsSection } from "@/components/template-settings-section"
+import { SyncSettings } from "@/components/sync-settings"
 import {
   Dialog,
   DialogBody,
@@ -33,11 +33,9 @@ import {
   type LlmProtocolId,
   type SaveLlmModelInput,
 } from "@/shared/llm"
-import type { TemplateDialogValues } from "@/components/template-dialog"
-import type { TemplateSummary } from "@/shared/templates"
 import type { AppUpdateCheckResult, AppUpdateCurrentInfo } from "@/shared/updates"
 
-type SettingsSection = "general" | "security" | "intelligence" | "templates"
+type SettingsSection = "general" | "security" | "intelligence" | "sync"
 type LocalCatalogEntry = {
   definition: ManagedLocalModelDefinition
   model: LlmModelConfig | null
@@ -120,6 +118,14 @@ function formatBytes(value: number | null | undefined) {
   return `${formatted} ${units[unitIndex]}`
 }
 
+function formatProgressPercent(value: number | null | undefined) {
+  if (typeof value !== "number" || Number.isNaN(value) || value < 0) {
+    return null
+  }
+
+  return `${Math.round(value * 100)}%`
+}
+
 function formatUpdateVersion(current: AppUpdateCurrentInfo | null) {
   if (!current) {
     return "—"
@@ -130,6 +136,14 @@ function formatUpdateVersion(current: AppUpdateCurrentInfo | null) {
 
 function isManagedLocalBusy(status: ManagedLocalModelStatus | null | undefined) {
   return status === "preparing" || status === "downloading" || status === "installing" || status === "starting"
+}
+
+function shouldRetryManagedLocalDownload(model: LlmModelConfig | null | undefined) {
+  if (!model || model.configType !== "managed-local" || model.enabled || !model.managedModelId) {
+    return false
+  }
+
+  return model.managedStatus !== "ready" && model.managedStatus !== "in-use"
 }
 
 function getManagedLocalStatusClasses(status: ManagedLocalModelStatus) {
@@ -381,12 +395,15 @@ function ModelDialog({
     ? "in-use"
     : selectedLocalEntry?.model?.managedStatus ?? "not-installed"
   const isSelectedLocalBusy = isManagedLocalBusy(selectedLocalStatus)
+  const shouldRetrySelectedLocalDownload = shouldRetryManagedLocalDownload(selectedLocalEntry?.model)
   const localPrimaryActionLabel = selectedLocalEntry?.model
     ? selectedLocalEntry.model.enabled
       ? localMessages.inUseButton
       : isSelectedLocalBusy
         ? getManagedLocalStatusLabel(selectedLocalStatus)
-        : localMessages.useNowButton
+        : shouldRetrySelectedLocalDownload
+          ? localMessages.retryDownloadButton
+          : localMessages.useNowButton
     : localMessages.addAndDownloadButton
 
   useEffect(() => {
@@ -547,6 +564,30 @@ function ModelDialog({
                       {selectedLocalEntry.definition.notes[0] ? (
                         <p className="mt-4 text-sm leading-6 text-[#667085]">{selectedLocalEntry.definition.notes[0]}</p>
                       ) : null}
+
+                      <div className="mt-4">
+                        <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3]">
+                          {localMessages.downloadSourcesTitle}
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {selectedLocalEntry.definition.downloadSources.map((source) => (
+                            <a
+                              key={`${selectedLocalEntry.definition.id}-${source.id}`}
+                              className="inline-flex items-center gap-2 rounded-full border border-[#dbe4f0] bg-[#f8fbff] px-3 py-1.5 text-xs font-medium text-[#2f6ef6] transition hover:border-[#bfd3f8] hover:bg-[#edf4ff]"
+                              href={source.downloadUrl}
+                              rel="noreferrer"
+                              target="_blank"
+                              title={source.pageUrl}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              <span>
+                                {source.label}
+                                {source.communityLabel ? ` · ${source.communityLabel}` : ""}
+                              </span>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
 
                       {selectedLocalEntry.model?.managedStatusMessage ? (
                         <p className="mt-3 text-sm leading-6 text-[#b42318]">{selectedLocalEntry.model.managedStatusMessage}</p>
@@ -785,16 +826,12 @@ export function SettingsPage() {
   const { appearance, setAppearance } = useTheme()
   const settingsMessages = messages.settings
   const intelligenceMessages = settingsMessages.intelligence
-  const templateMessages = settingsMessages.templates
   const updateMessages = settingsMessages.general.update
   const localMessages = intelligenceMessages.local
   const [activeSection, setActiveSection] = useState<SettingsSection>("intelligence")
   const [models, setModels] = useState<LlmModelConfig[]>([])
-  const [templates, setTemplates] = useState<TemplateSummary[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [feedback, setFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null)
-  const [templateFeedback, setTemplateFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null)
   const [updateInfo, setUpdateInfo] = useState<AppUpdateCheckResult | null>(null)
   const [isLoadingUpdateInfo, setIsLoadingUpdateInfo] = useState(false)
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
@@ -805,7 +842,6 @@ export function SettingsPage() {
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [isSubmittingDialog, setIsSubmittingDialog] = useState(false)
   const [pendingAction, setPendingAction] = useState<{ id: string; type: "enable" | "test" | "delete" } | null>(null)
-  const [pendingTemplateDeleteId, setPendingTemplateDeleteId] = useState<string | null>(null)
 
   const localCatalog = useMemo(() => getManagedLocalModelDefinitions(), [])
   const managedLocalModels = useMemo(
@@ -819,6 +855,17 @@ export function SettingsPage() {
         model: managedLocalModels.find((model) => model.managedModelId === definition.id) ?? null,
       })),
     [localCatalog, managedLocalModels],
+  )
+  const managedLocalTaskEntries = useMemo(
+    () =>
+      localCatalogEntries.filter(({ model }) => {
+        if (!model?.managedStatus) {
+          return false
+        }
+
+        return model.managedStatus !== "ready" && model.managedStatus !== "in-use" && model.managedStatus !== "not-installed"
+      }),
+    [localCatalogEntries],
   )
 
   function getManagedLocalStatusLabel(status: ManagedLocalModelStatus) {
@@ -872,28 +919,6 @@ export function SettingsPage() {
     } finally {
       if (!options?.silent) {
         setIsLoading(false)
-      }
-    }
-  }
-
-  async function loadTemplates(options?: { silent?: boolean }) {
-    if (!options?.silent) {
-      setIsLoadingTemplates(true)
-    }
-
-    try {
-      const nextTemplates = await window.metisNote.templates.list()
-      setTemplates(nextTemplates)
-    } catch (error) {
-      if (!options?.silent) {
-        setTemplateFeedback({
-          tone: "error",
-          message: error instanceof Error ? error.message : templateMessages.errors.loadFailed,
-        })
-      }
-    } finally {
-      if (!options?.silent) {
-        setIsLoadingTemplates(false)
       }
     }
   }
@@ -1019,14 +1044,6 @@ export function SettingsPage() {
   }, [activeSection])
 
   useEffect(() => {
-    if (activeSection !== "templates") {
-      return
-    }
-
-    void loadTemplates()
-  }, [activeSection])
-
-  useEffect(() => {
     if (activeSection !== "general" || updateInfo) {
       return
     }
@@ -1070,7 +1087,13 @@ export function SettingsPage() {
     try {
       const existing = managedLocalModels.find((model) => model.managedModelId === modelId) ?? null
 
-      if (existing) {
+      if (shouldRetryManagedLocalDownload(existing)) {
+        const retried = await window.metisNote.llmModels.addManagedLocal(modelId)
+        setFeedback({
+          tone: "success",
+          message: intelligenceMessages.notices.localRetryStarted(resolveConfiguredModelName(retried)),
+        })
+      } else if (existing) {
         const enabled = await window.metisNote.llmModels.enable(existing.id)
         setFeedback({
           tone: "success",
@@ -1113,12 +1136,22 @@ export function SettingsPage() {
     })
 
     try {
-      const enabled = await window.metisNote.llmModels.enable(model.id)
-      const modelLabel = enabled.configType === "managed-local" ? resolveConfiguredModelName(enabled) : enabled.identifier
-      setFeedback({
-        tone: "success",
-        message: intelligenceMessages.notices.enabled(modelLabel),
-      })
+      const managedModelId = model.configType === "managed-local" ? model.managedModelId : null
+
+      if (managedModelId && shouldRetryManagedLocalDownload(model)) {
+        const retried = await window.metisNote.llmModels.addManagedLocal(managedModelId)
+        setFeedback({
+          tone: "success",
+          message: intelligenceMessages.notices.localRetryStarted(resolveConfiguredModelName(retried)),
+        })
+      } else {
+        const enabled = await window.metisNote.llmModels.enable(model.id)
+        const modelLabel = enabled.configType === "managed-local" ? resolveConfiguredModelName(enabled) : enabled.identifier
+        setFeedback({
+          tone: "success",
+          message: intelligenceMessages.notices.enabled(modelLabel),
+        })
+      }
       await loadModels()
     } catch (error) {
       setFeedback({
@@ -1178,44 +1211,6 @@ export function SettingsPage() {
     }
   }
 
-  async function handleUpdateTemplate(id: string, values: TemplateDialogValues) {
-    try {
-      const updated = await window.metisNote.templates.update(id, values)
-      await loadTemplates({ silent: true })
-      setTemplateFeedback({
-        tone: "success",
-        message: templateMessages.notices.updated(updated.title),
-      })
-    } catch (error) {
-      const nextError = error instanceof Error ? error : new Error(templateMessages.errors.updateFailed)
-      setTemplateFeedback({
-        tone: "error",
-        message: nextError.message,
-      })
-      throw nextError
-    }
-  }
-
-  async function handleDeleteTemplate(id: string) {
-    setPendingTemplateDeleteId(id)
-
-    try {
-      const deleted = await window.metisNote.templates.delete(id)
-      await loadTemplates({ silent: true })
-      setTemplateFeedback({
-        tone: "success",
-        message: templateMessages.notices.deleted(deleted.title),
-      })
-    } catch (error) {
-      setTemplateFeedback({
-        tone: "error",
-        message: error instanceof Error ? error.message : templateMessages.errors.deleteFailed,
-      })
-    } finally {
-      setPendingTemplateDeleteId(null)
-    }
-  }
-
   const currentUpdateVersion = formatUpdateVersion(updateInfo?.current ?? null)
   const latestUpdateVersion = updateInfo?.latest?.tagName ?? updateMessages.latestVersionUnknown
   const updateStatusLabel = !updateInfo
@@ -1253,10 +1248,10 @@ export function SettingsPage() {
                 onClick={() => setActiveSection("intelligence")}
               />
               <SectionButton
-                active={activeSection === "templates"}
-                icon={LayoutTemplate}
-                label={settingsMessages.sections.templates}
-                onClick={() => setActiveSection("templates")}
+                active={activeSection === "sync"}
+                icon={CloudCog}
+                label={settingsMessages.sections.sync}
+                onClick={() => setActiveSection("sync")}
               />
             </div>
           </aside>
@@ -1416,15 +1411,8 @@ export function SettingsPage() {
                 </div>
               ) : null}
 
-              {activeSection === "templates" ? (
-                <TemplateSettingsSection
-                  templates={templates}
-                  isLoading={isLoadingTemplates}
-                  feedback={templateFeedback}
-                  pendingDeleteId={pendingTemplateDeleteId}
-                  onUpdateTemplate={handleUpdateTemplate}
-                  onDeleteTemplate={handleDeleteTemplate}
-                />
+              {activeSection === "sync" ? (
+                <SyncSettings />
               ) : null}
 
               {activeSection === "intelligence" ? (
@@ -1551,7 +1539,9 @@ export function SettingsPage() {
                                             ? intelligenceMessages.actions.inUse
                                             : isManagedBusy
                                               ? getManagedLocalStatusLabel(managedStatus)
-                                              : intelligenceMessages.actions.useNow
+                                              : shouldRetryManagedLocalDownload(model)
+                                                ? localMessages.retryDownloadButton
+                                                : intelligenceMessages.actions.useNow
                                           : model.enabled
                                             ? intelligenceMessages.actions.enabled
                                             : intelligenceMessages.actions.enable}
@@ -1598,6 +1588,101 @@ export function SettingsPage() {
                             })}
                           </tbody>
                         </table>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-6 rounded-[1.2rem] border border-[#e7ebf1] bg-white">
+                    <div className="border-b border-[#e7ebf1] px-5 py-4">
+                      <h2 className="text-lg font-semibold text-[#1f3045]">{localMessages.queueTitle}</h2>
+                      <p className="mt-1 text-sm leading-6 text-[#667085]">{localMessages.queueDescription}</p>
+                    </div>
+
+                    {managedLocalTaskEntries.length === 0 ? (
+                      <div className="px-5 py-6 text-sm leading-6 text-[#667085]">{localMessages.queueEmpty}</div>
+                    ) : (
+                      <div className="divide-y divide-[#edf2f7]">
+                        {managedLocalTaskEntries.map(({ definition, model }) => {
+                          const progress = model?.managedProgress ?? 0
+                          const progressPercent = formatProgressPercent(progress)
+
+                          return (
+                            <div key={definition.id} className="px-5 py-5">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-base font-semibold text-[#1f3045]">{definition.displayName}</div>
+                                  <div className="mt-1 text-sm text-[#667085]">
+                                    {getQualityLabel(definition)}
+                                    {" · "}
+                                    {formatGiB(definition.estimatedDownloadSizeGiB)}
+                                  </div>
+                                </div>
+                                {model?.managedStatus ? (
+                                  <span
+                                    className={cn(
+                                      "inline-flex rounded-full border px-3 py-1 text-xs font-medium",
+                                      getManagedLocalStatusClasses(model.managedStatus),
+                                    )}
+                                  >
+                                    {getManagedLocalStatusLabel(model.managedStatus)}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {typeof model?.managedProgress === "number" ? (
+                                <div className="mt-4">
+                                  <div className="flex items-center justify-between gap-3 text-sm text-[#667085]">
+                                    <span>{localMessages.progressLabel}</span>
+                                    <span>{progressPercent ?? "—"}</span>
+                                  </div>
+                                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#eef2f7]">
+                                    <div
+                                      className="h-full rounded-full bg-[#8eb6e8] transition-all"
+                                      style={{
+                                        width: `${Math.max(4, Math.round(progress * 100))}%`,
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="mt-2 text-xs text-[#667085]">
+                                    {formatBytes(model.managedDownloadedBytes)} / {formatBytes(model.managedTotalBytes)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="mt-4 text-sm leading-6 text-[#667085]">
+                                  {localMessages.queuePreparing(definition.displayName)}
+                                </p>
+                              )}
+
+                              {model?.managedStatusMessage ? (
+                                <p className="mt-3 text-sm leading-6 text-[#b42318]">{model.managedStatusMessage}</p>
+                              ) : null}
+
+                              <div className="mt-4">
+                                <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3]">
+                                  {localMessages.downloadSourcesTitle}
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {definition.downloadSources.map((source) => (
+                                    <a
+                                      key={`${definition.id}-${source.id}`}
+                                      className="inline-flex items-center gap-2 rounded-full border border-[#dbe4f0] bg-[#f8fbff] px-3 py-1.5 text-xs font-medium text-[#2f6ef6] transition hover:border-[#bfd3f8] hover:bg-[#edf4ff]"
+                                      href={source.downloadUrl}
+                                      rel="noreferrer"
+                                      target="_blank"
+                                      title={source.pageUrl}
+                                    >
+                                      <ExternalLink className="h-3.5 w-3.5" />
+                                      <span>
+                                        {source.label}
+                                        {source.communityLabel ? ` · ${source.communityLabel}` : ""}
+                                      </span>
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>

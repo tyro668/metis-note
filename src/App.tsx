@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react"
+import { AlertTriangle, Check, Cloud, CloudOff, Loader2, Settings2 } from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { ConflictDialog } from "@/components/conflict-dialog"
 import { NoteEditor } from "@/components/note-editor"
 import { NoteList } from "@/components/note-list"
 import { NoteSidebar } from "@/components/note-sidebar"
 import { SettingsPage } from "@/components/settings-page"
 import { TemplateDialog, type TemplateDialogValues } from "@/components/template-dialog"
-import { TemplatePickerDialog } from "@/components/template-picker-dialog"
 import { useI18n } from "@/i18n/provider"
 import { cn } from "@/lib/utils"
 import {
-  buildNotePathTitles,
   buildPreview,
   countWords,
   type CreateNoteInput,
@@ -16,7 +16,7 @@ import {
   type NoteSummary,
   type NoteView,
 } from "@/shared/notes"
-import type { TemplateSummary } from "@/shared/templates"
+import type { NoteSyncStateMap, SyncResult, SyncStatus } from "@/shared/sync"
 
 function noteSnapshot(note: NoteDocument | null) {
   if (!note) {
@@ -63,7 +63,7 @@ function filterNotes(notes: NoteSummary[], view: NoteView, searchValue: string) 
   })
 
   if (view === "favorites") {
-    filtered = filtered.filter((note) => note.isPinned)
+    filtered = filtered.filter((note) => note.isFavorite)
   }
 
   if (keyword) {
@@ -92,7 +92,7 @@ function pickVisibleNoteId(notes: NoteSummary[], preferredId: string | null, vie
 function countsFor(notes: NoteSummary[]) {
   return {
     all: notes.filter((note) => note.status === "active").length,
-    favorites: notes.filter((note) => note.status === "active" && note.isPinned).length,
+    favorites: notes.filter((note) => note.status === "active" && note.isFavorite).length,
     trash: notes.filter((note) => note.status === "trashed").length,
   } satisfies Record<NoteView, number>
 }
@@ -147,10 +147,11 @@ export default function App() {
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null)
-  const [templates, setTemplates] = useState<TemplateSummary[]>([])
-  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false)
+  const [noteSyncStates, setNoteSyncStates] = useState<NoteSyncStateMap>({})
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({ state: "not-configured" })
+  const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null)
+  const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false)
   const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false)
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [isSubmittingTemplateAction, setIsSubmittingTemplateAction] = useState(false)
   const [templateActionError, setTemplateActionError] = useState<string | null>(null)
   const [isFocusMode, setIsFocusMode] = useState(false)
@@ -159,6 +160,7 @@ export default function App() {
   const saveTimerRef = useRef<number | null>(null)
   const pendingSaveRef = useRef<Promise<unknown> | null>(null)
   const lastPersistedSnapshotRef = useRef<string | null>(null)
+  const noteSyncStatesRequestIdRef = useRef(0)
   const plainTextRef = useRef("")
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchValueRef = useRef("")
@@ -166,14 +168,55 @@ export default function App() {
 
   const visibleNotes = filterNotes(allNotes, activeView, searchValue)
   const counts = countsFor(allNotes)
-  const draftPathTitles = buildNotePathTitles(allNotes, draftNote?.id ?? null)
-
-  function requestEditorOpenMode(mode: EditorOpenMode) {
+  const requestEditorOpenMode = useCallback((mode: EditorOpenMode) => {
     setEditorOpenRequest((current) => ({
       mode,
       id: current.id + 1,
     }))
-  }
+  }, [])
+
+  const hasPendingDraftChanges = useCallback((note: NoteDocument | null = draftRef.current) => {
+    const snapshot = noteSnapshot(note)
+
+    return Boolean(snapshot && snapshot !== lastPersistedSnapshotRef.current)
+  }, [])
+
+  const refreshNoteSyncStates = useCallback(async () => {
+    const requestId = noteSyncStatesRequestIdRef.current + 1
+    noteSyncStatesRequestIdRef.current = requestId
+
+    try {
+      const nextStates = await window.metisNote.sync.getNoteSyncStates()
+
+      if (noteSyncStatesRequestIdRef.current !== requestId) {
+        return
+      }
+
+      setNoteSyncStates(nextStates)
+    } catch {
+      // Sync may not be configured yet.
+    }
+  }, [])
+
+  const refreshSelectedDraftFromDisk = useCallback(async () => {
+    const selectedId = selectedIdRef.current
+
+    if (!selectedId || hasPendingDraftChanges()) {
+      return
+    }
+
+    const note = await window.metisNote.notes.get(selectedId)
+
+    if (selectedIdRef.current !== selectedId) {
+      return
+    }
+
+    lastPersistedSnapshotRef.current = noteSnapshot(note)
+    plainTextRef.current = note?.plainText ?? ""
+    draftRef.current = note
+    setDraftNote(note)
+    setLastSavedAt(note?.updatedAt ?? null)
+  }, [hasPendingDraftChanges])
 
   async function ensureEditorPreviewMode() {
     requestEditorOpenMode("preview")
@@ -210,6 +253,7 @@ export default function App() {
         }
 
         setAllNotes(nextNotes)
+        void refreshNoteSyncStates()
 
         const nextSelectedId = pickVisibleNoteId(nextNotes, null, activeViewRef.current, searchValueRef.current)
         selectedIdRef.current = nextSelectedId
@@ -371,7 +415,7 @@ export default function App() {
 
       if (key === "s") {
         event.preventDefault()
-        void flushPendingSave()
+        void handleManualCommitEdits()
       }
 
       if (key === "p" && activeScreen === "notes" && selectedIdRef.current) {
@@ -393,7 +437,11 @@ export default function App() {
     }
   })
 
-  async function refreshNotes(preferredId?: string | null, preferredMode?: EditorOpenMode) {
+  const refreshNotes = useCallback(async (
+    preferredId?: string | null,
+    preferredMode?: EditorOpenMode,
+    options?: { reloadSelectedFromDisk?: boolean },
+  ) => {
     const nextNotes = await window.metisNote.notes.list()
     const previousSelectedId = selectedIdRef.current
 
@@ -414,11 +462,44 @@ export default function App() {
       requestEditorOpenMode("preview")
     }
 
+    if (options?.reloadSelectedFromDisk) {
+      await refreshSelectedDraftFromDisk()
+    }
+
+    await refreshNoteSyncStates()
+
     return {
       notes: nextNotes,
       selectedId: nextSelectedId,
     }
-  }
+  }, [refreshNoteSyncStates, refreshSelectedDraftFromDisk, requestEditorOpenMode])
+
+  const triggerSyncAfterManualSave = useCallback(() => {
+    void (async () => {
+      try {
+        const result = await window.metisNote.sync.syncNow()
+
+        if (result.status === "success" && result.pulled > 0) {
+          await refreshNotes(selectedIdRef.current, undefined, { reloadSelectedFromDisk: true })
+          return
+        }
+
+        await refreshNoteSyncStates()
+      } catch {
+        // Keep save success separate from background sync failures.
+      }
+    })()
+  }, [refreshNoteSyncStates, refreshNotes])
+
+  const handleManualCommitEdits = useCallback(async () => {
+    const shouldSyncAfterSave = hasPendingDraftChanges() || pendingSaveRef.current !== null || saveTimerRef.current !== null
+
+    await flushPendingSave()
+
+    if (shouldSyncAfterSave) {
+      triggerSyncAfterManualSave()
+    }
+  }, [hasPendingDraftChanges, triggerSyncAfterManualSave])
 
   function cancelScheduledSave() {
     if (saveTimerRef.current !== null) {
@@ -472,6 +553,7 @@ export default function App() {
         return merged
       })
       setAllNotes((current) => upsertSummary(current, saved))
+      await refreshNoteSyncStates()
       return saved
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : messages.errors.saveFailed)
@@ -515,6 +597,16 @@ export default function App() {
     requestEditorOpenMode(mode)
   }
 
+  async function handleDeselectNote() {
+    if (selectedIdRef.current === null) {
+      return
+    }
+
+    await flushPendingSave()
+    selectedIdRef.current = null
+    setSelectedNoteId(null)
+  }
+
   function handleOpenLinkedNote(id: string) {
     setActiveScreen("notes")
     void handleSelectNote(id, "preview")
@@ -543,64 +635,6 @@ export default function App() {
     }
   }
 
-  async function loadTemplates(options?: { silent?: boolean }) {
-    if (!options?.silent) {
-      setIsLoadingTemplates(true)
-    }
-
-    try {
-      const nextTemplates = await window.metisNote.templates.list()
-      setTemplates(nextTemplates)
-      return nextTemplates
-    } catch (error) {
-      const message = error instanceof Error ? error.message : messages.settings.templates.errors.loadFailed
-      setTemplateActionError(message)
-      return []
-    } finally {
-      if (!options?.silent) {
-        setIsLoadingTemplates(false)
-      }
-    }
-  }
-
-  async function handleOpenTemplatePicker() {
-    try {
-      await flushPendingSave()
-      setTemplateActionError(null)
-      setIsTemplatePickerOpen(true)
-      await loadTemplates()
-    } catch (error) {
-      setTemplateActionError(error instanceof Error ? error.message : messages.settings.templates.errors.loadFailed)
-    }
-  }
-
-  async function handleCreateNoteFromTemplate(templateId: string) {
-    try {
-      setIsSubmittingTemplateAction(true)
-      setTemplateActionError(null)
-      await flushPendingSave()
-      const selectedSummary = getSelectedActiveSummary()
-      const created = await window.metisNote.notes.createFromTemplate(templateId, createPayloadForSelection(selectedSummary))
-      const nextView = resolveViewForNote(created, activeViewRef.current)
-
-      activeViewRef.current = nextView
-      setActiveView(nextView)
-      setDraftNote(created)
-      requestEditorOpenMode("preview")
-      lastPersistedSnapshotRef.current = noteSnapshot(created)
-      plainTextRef.current = created.plainText
-      setLastSavedAt(created.updatedAt)
-      await refreshNotes(created.id)
-      setIsTemplatePickerOpen(false)
-      setNoticeMessage(messages.notices.createdFromTemplate(created.title))
-      setErrorMessage(null)
-    } catch (error) {
-      setTemplateActionError(error instanceof Error ? error.message : messages.settings.templates.errors.createNoteFailed)
-    } finally {
-      setIsSubmittingTemplateAction(false)
-    }
-  }
-
   async function handleOpenSaveTemplateDialog() {
     if (!draftNote || draftNote.status !== "active") {
       return
@@ -609,7 +643,6 @@ export default function App() {
     await flushPendingSave()
     setTemplateActionError(null)
     setIsSaveTemplateDialogOpen(true)
-    void loadTemplates({ silent: true })
   }
 
   async function handleSaveTemplate(values: TemplateDialogValues) {
@@ -626,7 +659,6 @@ export default function App() {
         description: values.description,
         category: values.category,
       })
-      await loadTemplates({ silent: true })
       setIsSaveTemplateDialogOpen(false)
       setNoticeMessage(messages.notices.templateSaved(template.title))
     } catch (error) {
@@ -856,7 +888,6 @@ export default function App() {
         setDraftNote(next)
         setAllNotes((current) => replaceSummary(current, next))
         await persistNote(next, plainTextRef.current)
-        setNoticeMessage(next.isPinned ? messages.notices.pinned : messages.notices.unpinned)
         return
       }
 
@@ -865,7 +896,39 @@ export default function App() {
       })
 
       setAllNotes((current) => upsertSummary(current, saved))
-      setNoticeMessage(saved.isPinned ? messages.notices.pinned : messages.notices.unpinned)
+      await refreshNoteSyncStates()
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : messages.errors.togglePinFailed)
+    }
+  }
+
+  async function handleToggleFavorite(id: string) {
+    const summary = allNotes.find((note) => note.id === id)
+
+    if (!summary || summary.status !== "active") {
+      return
+    }
+
+    try {
+      if (draftRef.current?.id === id) {
+        cancelScheduledSave()
+        const next = {
+          ...draftRef.current,
+          isFavorite: !draftRef.current.isFavorite,
+        }
+
+        setDraftNote(next)
+        setAllNotes((current) => replaceSummary(current, next))
+        await persistNote(next, plainTextRef.current)
+        return
+      }
+
+      const saved = await window.metisNote.notes.update(id, {
+        isFavorite: !summary.isFavorite,
+      })
+
+      setAllNotes((current) => upsertSummary(current, saved))
+      await refreshNoteSyncStates()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : messages.errors.toggleFavoriteFailed)
     }
@@ -949,6 +1012,102 @@ export default function App() {
     setIsFocusMode((current) => !current)
   }
 
+  const effectiveNoteSyncStates = useMemo(() => {
+    if (!draftNote || draftNote.status !== "active" || !hasPendingDraftChanges(draftNote)) {
+      return noteSyncStates
+    }
+
+    if (noteSyncStates[draftNote.id] === "conflict") {
+      return noteSyncStates
+    }
+
+    return {
+      ...noteSyncStates,
+      [draftNote.id]: "upload-pending",
+    } satisfies NoteSyncStateMap
+  }, [draftNote, hasPendingDraftChanges, noteSyncStates])
+
+  const syncBarContent = useMemo(() => {
+    switch (syncStatus.state) {
+      case "syncing": {
+        const phaseLabel = messages.sync.phase[syncStatus.phase]
+        const hasProgress = syncStatus.progress.totalFiles > 0
+        const progressLabel = hasProgress
+          ? `${Math.min(syncStatus.progress.completedFiles, syncStatus.progress.totalFiles)} / ${syncStatus.progress.totalFiles}`
+          : null
+        return {
+          tone: "syncing" as const,
+          label: progressLabel ? `${messages.sync.status.syncing} ${phaseLabel} ${progressLabel}` : `${messages.sync.status.syncing} ${phaseLabel}`,
+        }
+      }
+      case "error":
+        return { tone: "error" as const, label: `${messages.sync.status.error}: ${syncStatus.message}` }
+      case "conflict":
+        return { tone: "conflict" as const, label: `${messages.sync.status.conflict} (${messages.sync.result.conflicts(syncStatus.pendingCount)})` }
+      case "idle": {
+        const parts: string[] = [messages.sync.status.idle]
+
+        if (lastSyncResult && lastSyncResult.status === "success") {
+          if (lastSyncResult.pushed > 0) {
+            parts.push(messages.sync.result.pushed(lastSyncResult.pushed))
+          }
+          if (lastSyncResult.pulled > 0) {
+            parts.push(messages.sync.result.pulled(lastSyncResult.pulled))
+          }
+        }
+
+        return { tone: "idle" as const, label: parts.join("  ·  ") }
+      }
+      case "disabled":
+        return { tone: "disabled" as const, label: messages.sync.status.disabled }
+      case "not-configured":
+        return { tone: "not-configured" as const, label: messages.sync.status.notConfigured }
+      default:
+        return { tone: "idle" as const, label: "" }
+    }
+  }, [messages.sync.phase, messages.sync.result, messages.sync.status, syncStatus, lastSyncResult])
+
+  useEffect(() => {
+    void window.metisNote.sync.getStatus().then((status) => {
+      setSyncStatus(status)
+    }).catch(() => {
+      // Sync may not be configured yet.
+    })
+
+    const disposeStatusChanged = window.metisNote.sync.onStatusChanged((status) => {
+      setSyncStatus(status)
+
+      // Only refresh per-note sync states when sync settles, not during
+      // intermediate phases (scanning/uploading/etc.) to avoid stale reads.
+      if (status.state !== "syncing") {
+        void refreshNoteSyncStates()
+      }
+
+      if (status.state === "conflict") {
+        setIsConflictDialogOpen(true)
+      }
+    })
+    const disposeSyncCompleted = window.metisNote.sync.onSyncCompleted((result) => {
+      setLastSyncResult(result)
+      void (async () => {
+        if (result.status === "success" && result.pulled > 0) {
+          await refreshNotes(selectedIdRef.current, undefined, { reloadSelectedFromDisk: true })
+          return
+        }
+
+        await refreshNoteSyncStates()
+      })()
+    })
+
+    return () => {
+      disposeStatusChanged()
+      disposeSyncCompleted()
+    }
+  }, [refreshNoteSyncStates, refreshNotes])
+
+  // Auto-sync after save is disabled — sync only triggers on manual save
+  // (Cmd+S) via triggerSyncAfterManualSave(), or via the background timer.
+
   return (
     <main
       className={cn(
@@ -980,18 +1139,19 @@ export default function App() {
                   activeView={activeView}
                   isLoading={isBooting}
                   noticeMessage={noticeMessage}
+                  noteSyncStates={effectiveNoteSyncStates}
                   searchInputRef={searchInputRef}
                   onSearchChange={setSearchValue}
                   onCreateNote={handleCreateNote}
-                  onCreateFromTemplate={() => {
-                    void handleOpenTemplatePicker()
-                  }}
                   onImportNote={handleImportNote}
                   onSelectNote={handleSelectNote}
+                  onDeselectNote={handleDeselectNote}
                   onTogglePin={handleTogglePin}
+                  onToggleFavorite={handleToggleFavorite}
                   onMoveToTrash={handleMoveToTrash}
                   onRestoreNote={handleRestoreNote}
                   onDeleteForever={handleDeleteForever}
+                  onOpenConflicts={() => setIsConflictDialogOpen(true)}
                 />
               ) : null}
 
@@ -1000,7 +1160,6 @@ export default function App() {
                   key={draftNote?.id ?? "empty"}
                   allNotes={allNotes}
                   note={draftNote}
-                  pathTitles={draftPathTitles}
                   requestedMode={editorOpenRequest.mode}
                   modeRequestId={editorOpenRequest.id}
                   isLoading={isLoadingNote}
@@ -1029,7 +1188,7 @@ export default function App() {
                     void handlePrintNote()
                   }}
                   onSaveAsTemplate={() => handleOpenSaveTemplateDialog()}
-                  onCommitEdits={() => flushPendingSave()}
+                  onCommitEdits={() => handleManualCommitEdits()}
                   onRestoreVersion={handleRestoreVersion}
                   onOpenLinkedNote={handleOpenLinkedNote}
                   isFocusMode={isFocusMode}
@@ -1043,30 +1202,39 @@ export default function App() {
             </div>
           )}
         </div>
-      </section>
 
-      <TemplatePickerDialog
-        open={isTemplatePickerOpen}
-        templates={templates}
-        isLoading={isLoadingTemplates}
-        isSubmitting={isSubmittingTemplateAction}
-        errorMessage={templateActionError}
-        title={messages.settings.templates.picker.title}
-        closeLabel={messages.settings.templates.dialog.close}
-        createLabel={messages.settings.templates.picker.create}
-        cancelLabel={messages.settings.templates.dialog.cancel}
-        loadingLabel={messages.settings.templates.loading}
-        emptyLabel={messages.settings.templates.empty}
-        builtInLabel={messages.settings.templates.builtInBadge}
-        customLabel={messages.settings.templates.customBadge}
-        onOpenChange={(open) => {
-          setIsTemplatePickerOpen(open)
-          if (!open) {
-            setTemplateActionError(null)
-          }
-        }}
-        onSubmit={(templateId) => handleCreateNoteFromTemplate(templateId)}
-      />
+        {activeScreen === "notes" ? (
+          <div className={cn(
+            "flex shrink-0 items-center gap-2 border-t px-3 py-1 text-[11px]",
+            syncBarContent.tone === "syncing"
+              ? "border-[#d6e4ff] bg-[#f5f8ff] text-[#3b6de0] dark:border-[#24416e] dark:bg-[#0e1b33] dark:text-[#8eb8ff]"
+              : syncBarContent.tone === "error"
+                ? "border-[#f3d2d0] bg-[#fff5f5] text-[#c4342b] dark:border-[#5a2a2a] dark:bg-[#1c1010] dark:text-[#fda29b]"
+                : syncBarContent.tone === "conflict"
+                  ? "border-[#f3e0b5] bg-[#fffbf2] text-[#b54708] dark:border-[#5a4420] dark:bg-[#1c1508] dark:text-[#f5c26b]"
+                  : syncBarContent.tone === "idle"
+                    ? "border-[#e7ebf1] bg-[#f9fafb] text-[#5b6b85] dark:border-[#1f2937] dark:bg-[#0b1220] dark:text-slate-400"
+                    : "border-[#e7ebf1] bg-[#f9fafb] text-[#98a2b3] dark:border-[#1f2937] dark:bg-[#0b1220] dark:text-slate-500",
+          )}>
+            <span className="inline-flex items-center justify-center">
+              {syncBarContent.tone === "syncing" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : syncBarContent.tone === "error" ? (
+                <AlertTriangle className="h-3 w-3" />
+              ) : syncBarContent.tone === "conflict" ? (
+                <AlertTriangle className="h-3 w-3" />
+              ) : syncBarContent.tone === "idle" ? (
+                <Check className="h-3 w-3" />
+              ) : syncBarContent.tone === "disabled" ? (
+                <CloudOff className="h-3 w-3" />
+              ) : (
+                <Settings2 className="h-3 w-3" />
+              )}
+            </span>
+            <span className="truncate">{syncBarContent.label}</span>
+          </div>
+        ) : null}
+      </section>
 
       <TemplateDialog
         open={isSaveTemplateDialogOpen}
@@ -1095,6 +1263,7 @@ export default function App() {
         }}
         onSubmit={handleSaveTemplate}
       />
+      <ConflictDialog open={isConflictDialogOpen} onOpenChange={setIsConflictDialogOpen} />
     </main>
   )
 }

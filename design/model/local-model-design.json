@@ -259,6 +259,22 @@
       "repositoryPage": "https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF",
       "filename": "Qwen3.5-4B-Q4_K_M.gguf",
       "downloadUrl": "https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf",
+      "downloadSources": [
+        {
+          "id": "huggingface",
+          "label": "Hugging Face",
+          "communityLabel": "Official Community",
+          "pageUrl": "https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF",
+          "downloadUrl": "https://huggingface.co/lmstudio-community/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf"
+        },
+        {
+          "id": "hf-mirror",
+          "label": "HF-Mirror",
+          "communityLabel": "国内镜像社区",
+          "pageUrl": "https://hf-mirror.com/lmstudio-community/Qwen3.5-4B-GGUF",
+          "downloadUrl": "https://hf-mirror.com/lmstudio-community/Qwen3.5-4B-GGUF/resolve/main/Qwen3.5-4B-Q4_K_M.gguf"
+        }
+      ],
       "license": "Apache-2.0",
       "contextLength": 262144,
       "estimatedDownloadSizeGiB": 2.6,
@@ -285,6 +301,22 @@
       "repositoryPage": "https://huggingface.co/lmstudio-community/Qwen3.5-9B-GGUF",
       "filename": "Qwen3.5-9B-Q4_K_M.gguf",
       "downloadUrl": "https://huggingface.co/lmstudio-community/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf",
+      "downloadSources": [
+        {
+          "id": "huggingface",
+          "label": "Hugging Face",
+          "communityLabel": "Official Community",
+          "pageUrl": "https://huggingface.co/lmstudio-community/Qwen3.5-9B-GGUF",
+          "downloadUrl": "https://huggingface.co/lmstudio-community/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+        },
+        {
+          "id": "hf-mirror",
+          "label": "HF-Mirror",
+          "communityLabel": "国内镜像社区",
+          "pageUrl": "https://hf-mirror.com/lmstudio-community/Qwen3.5-9B-GGUF",
+          "downloadUrl": "https://hf-mirror.com/lmstudio-community/Qwen3.5-9B-GGUF/resolve/main/Qwen3.5-9B-Q4_K_M.gguf"
+        }
+      ],
       "license": "Apache-2.0",
       "contextLength": 262144,
       "estimatedDownloadSizeGiB": 5.4,

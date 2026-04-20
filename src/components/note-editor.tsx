@@ -1,6 +1,9 @@
 import { DragHandle as TiptapDragHandle } from "@tiptap/extension-drag-handle-react"
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { JSONContent } from "@tiptap/core"
+import { Fragment as ProseMirrorFragment, Node as ProseMirrorNode } from "@tiptap/pm/model"
+import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state"
+import { TableMap } from "@tiptap/pm/tables"
 import Details from "@tiptap/extension-details"
 import DetailsContent from "@tiptap/extension-details-content"
 import DetailsSummary from "@tiptap/extension-details-summary"
@@ -29,7 +32,6 @@ import {
   Bold,
   Clock3,
   ChevronRight,
-  ChevronDown,
   Code2,
   Download,
   FileText,
@@ -48,6 +50,7 @@ import {
   Minimize2,
   MoreHorizontal,
   Paperclip,
+  PanelTop,
   Printer,
   Quote,
   Sigma,
@@ -55,6 +58,9 @@ import {
   Strikethrough,
   Subscript as SubscriptIcon,
   Superscript as SuperscriptIcon,
+  TableCellsMerge,
+  TableColumnsSplit,
+  TableRowsSplit,
   Trash2,
   Type,
   Underline as UnderlineIcon,
@@ -63,9 +69,10 @@ import { common, createLowlight } from "lowlight"
 import { AiWritePanel, type AiWritePanelPosition, type AiWritePanelStatus } from "@/components/editor/ai-write-panel"
 import {
   buildAiWriteInsertContent,
-  buildAiWriteUserPrompt,
+  buildAiWriteUserPromptWithInstruction,
   collectAiWriteContext,
   getAiWriteSystemPrompt,
+  type AiWriteContext,
 } from "@/components/editor/ai-write"
 import { FileAttachment } from "@/components/editor/file-attachment"
 import { ImageLightbox } from "@/components/editor/image-lightbox"
@@ -98,12 +105,11 @@ import {
   type NoteSummary,
 } from "@/shared/notes"
 import type { VersionSummary } from "@/shared/versions"
-import type { AppLocale } from "@/shared/i18n"
+import type { AppLocale, AppMessages } from "@/shared/i18n"
 
 interface NoteEditorProps {
   note: NoteDocument | null
   allNotes: NoteSummary[]
-  pathTitles: string[]
   requestedMode: "preview" | "edit"
   modeRequestId: number
   isLoading: boolean
@@ -180,9 +186,11 @@ interface AiWriteState {
   insertPosition: number
   position: AiWritePanelPosition
   status: AiWritePanelStatus
+  context: AiWriteContext
+  userInstruction: string
   generatedText: string
   errorMessage: string | null
-  request: LlmStreamChatParams
+  request: LlmStreamChatParams | null
 }
 
 interface NoteLinkPickerState {
@@ -200,7 +208,177 @@ interface LightboxImageState {
   alt: string | null
 }
 
+interface TableInsertPickerState {
+  source: "toolbar" | "slash"
+  insertPosition: number
+  position: AiWritePanelPosition | null
+  rows: number
+  cols: number
+}
+
 type EditorAssetFile = File & { path?: string }
+
+const TABLE_PICKER_MAX_ROWS = 6
+const TABLE_PICKER_MAX_COLS = 6
+const TABLE_INDEX_SYNC_META = "metis-note-table-index-sync"
+const tableIndexSyncPluginKey = new PluginKey("metis-note-table-index-sync")
+
+function hasTableHeaderRow(tableNode: ProseMirrorNode) {
+  const firstRow = tableNode.firstChild
+
+  if (!firstRow || firstRow.type.name !== "tableRow" || firstRow.childCount === 0) {
+    return false
+  }
+
+  for (let index = 0; index < firstRow.childCount; index += 1) {
+    if (firstRow.child(index).type.name !== "tableHeader") {
+      return false
+    }
+  }
+
+  return true
+}
+
+function buildTableIndexCellContent(tableNode: ProseMirrorNode, label: string) {
+  const paragraphNode = tableNode.type.schema.nodes.paragraph
+
+  if (!paragraphNode) {
+    return null
+  }
+
+  return ProseMirrorFragment.from(paragraphNode.create(null, tableNode.type.schema.text(label)))
+}
+
+function syncIndexedTableAtPosition(tr: Transaction, tablePosition: number) {
+  const tableNode = tr.doc.nodeAt(tablePosition)
+
+  if (!tableNode || tableNode.type.name !== "table" || !tableNode.attrs.indexColumn) {
+    return false
+  }
+
+  const nextCellContent = buildTableIndexCellContent(tableNode, "1")
+
+  if (!nextCellContent) {
+    return false
+  }
+
+  const tableMap = TableMap.get(tableNode)
+  const numberingStartRow = hasTableHeaderRow(tableNode) ? 1 : 0
+  const seenCellOffsets = new Set<number>()
+  let didChange = false
+  let sequence = 1
+
+  for (let rowIndex = numberingStartRow; rowIndex < tableMap.height; rowIndex += 1) {
+    const cellOffset = tableMap.positionAt(rowIndex, 0, tableNode)
+
+    if (cellOffset === undefined || seenCellOffsets.has(cellOffset)) {
+      continue
+    }
+
+    seenCellOffsets.add(cellOffset)
+
+    const cellPosition = tr.mapping.map(tablePosition + 1 + cellOffset)
+    const cellNode = tr.doc.nodeAt(cellPosition)
+
+    if (!cellNode || !["tableCell", "tableHeader"].includes(cellNode.type.name)) {
+      continue
+    }
+
+    const expectedContent = sequence === 1 ? nextCellContent : buildTableIndexCellContent(tableNode, String(sequence))
+
+    if (!expectedContent || cellNode.content.eq(expectedContent)) {
+      sequence += 1
+      continue
+    }
+
+    tr.replaceWith(cellPosition + 1, cellPosition + cellNode.nodeSize - 1, expectedContent)
+    didChange = true
+    sequence += 1
+  }
+
+  return didChange
+}
+
+function syncIndexedTablesInTransaction(tr: Transaction) {
+  const indexedTablePositions: number[] = []
+
+  tr.doc.descendants((node, position) => {
+    if (node.type.name === "table" && node.attrs.indexColumn) {
+      indexedTablePositions.push(position)
+    }
+
+    return undefined
+  })
+
+  let didChange = false
+
+  for (const tablePosition of indexedTablePositions) {
+    const mappedTablePosition = tr.mapping.map(tablePosition)
+
+    if (syncIndexedTableAtPosition(tr, mappedTablePosition)) {
+      didChange = true
+    }
+  }
+
+  return didChange
+}
+
+function findSelectedTable(state: EditorState) {
+  const { $from } = state.selection
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth)
+
+    if (node.type.name === "table") {
+      return {
+        node,
+        pos: $from.before(depth),
+      }
+    }
+  }
+
+  return null
+}
+
+const ManagedTable = Table.extend({
+  addAttributes() {
+    return {
+      ...(this.parent?.() ?? {}),
+      indexColumn: {
+        default: false,
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-index-column") === "true",
+        renderHTML: (attributes: { indexColumn?: boolean }) =>
+          attributes.indexColumn ? { "data-index-column": "true" } : {},
+      },
+    }
+  },
+  addProseMirrorPlugins() {
+    return [
+      ...(this.parent?.() ?? []),
+      new Plugin({
+        key: tableIndexSyncPluginKey,
+        appendTransaction(transactions, _oldState, newState) {
+          if (
+            transactions.some((transaction) => transaction.getMeta(TABLE_INDEX_SYNC_META)) ||
+            !transactions.some((transaction) => transaction.docChanged)
+          ) {
+            return null
+          }
+
+          const nextTransaction = newState.tr
+
+          if (!syncIndexedTablesInTransaction(nextTransaction)) {
+            return null
+          }
+
+          nextTransaction.setMeta(TABLE_INDEX_SYNC_META, true)
+
+          return nextTransaction
+        },
+      }),
+    ]
+  },
+})
 
 function formatHeaderDate(locale: AppLocale, value: string | null, unsavedLabel: string) {
   if (!value) {
@@ -257,6 +435,7 @@ interface ToolbarButtonProps {
   disabled?: boolean
   onClick: () => void
   title?: string
+  tone?: "default" | "danger"
   children: ReactNode
 }
 
@@ -290,7 +469,7 @@ const HIGHLIGHT_COLORS = [
   { value: "#fed7aa", swatchClassName: "bg-[#fed7aa]" },
 ] as const
 
-function ToolbarButton({ active, disabled, onClick, title, children }: ToolbarButtonProps) {
+function ToolbarButton({ active, disabled, onClick, title, tone = "default", children }: ToolbarButtonProps) {
   return (
     <button
       type="button"
@@ -298,9 +477,13 @@ function ToolbarButton({ active, disabled, onClick, title, children }: ToolbarBu
       title={title}
       className={cn(
         "inline-flex h-7 min-w-7 items-center justify-center rounded-md px-1.5 text-[#7f8794] transition hover:text-foreground dark:text-slate-400",
-        active
-          ? "bg-[#eef4ff] text-[#2563eb] dark:bg-[#13233f] dark:text-[#8eb8ff]"
-          : "hover:bg-[#f8fafc] dark:hover:bg-[#0f172a]",
+        tone === "danger"
+          ? active
+            ? "bg-[rgba(180,35,24,0.08)] text-[#b42318] dark:bg-[#261318] dark:text-[#fda29b]"
+            : "text-[#b42318] hover:bg-[rgba(180,35,24,0.05)] hover:text-[#b42318] dark:text-[#fda29b] dark:hover:bg-[#261318] dark:hover:text-[#fda29b]"
+          : active
+            ? "bg-[#eef4ff] text-[#2563eb] dark:bg-[#13233f] dark:text-[#8eb8ff]"
+            : "hover:bg-[#f8fafc] dark:hover:bg-[#0f172a]",
       )}
       onClick={onClick}
     >
@@ -430,10 +613,68 @@ function MetaPill({ children }: { children: ReactNode }) {
   )
 }
 
+function TableInsertPicker({
+  messages,
+  rows,
+  cols,
+  onSelectSize,
+  onHoverSize,
+  onClose,
+}: {
+  messages: AppMessages["editor"]["tablePicker"]
+  rows: number
+  cols: number
+  onSelectSize: (rows: number, cols: number) => void
+  onHoverSize: (rows: number, cols: number) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="w-[272px] rounded-2xl border border-[#e7ebf1] bg-white p-3 shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-[#243041] dark:bg-[#111827]">
+      <div className="px-1">
+        <div className="text-sm font-semibold text-[#1f3045] dark:text-slate-100">{messages.title}</div>
+        <div className="mt-1 text-xs leading-5 text-[#667085] dark:text-slate-400">{messages.description}</div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-6 gap-1">
+        {Array.from({ length: TABLE_PICKER_MAX_ROWS }).map((_, rowIndex) =>
+          Array.from({ length: TABLE_PICKER_MAX_COLS }).map((__, colIndex) => {
+            const nextRows = rowIndex + 1
+            const nextCols = colIndex + 1
+            const active = nextRows <= rows && nextCols <= cols
+
+            return (
+              <button
+                key={`${nextRows}-${nextCols}`}
+                type="button"
+                className={cn(
+                  "h-7 rounded-md border transition",
+                  active
+                    ? "border-[#8eb6e8] bg-[#e8f2ff]"
+                    : "border-[#dbe4f0] bg-[#f8fbff] hover:border-[#bfd3f8] hover:bg-[#edf4ff]",
+                  "dark:border-[#334155] dark:bg-[#0f172a] dark:hover:border-[#4f6b95] dark:hover:bg-[#13233f]",
+                )}
+                onMouseEnter={() => onHoverSize(nextRows, nextCols)}
+                onFocus={() => onHoverSize(nextRows, nextCols)}
+                onClick={() => onSelectSize(nextRows, nextCols)}
+              />
+            )
+          }),
+        )}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3 px-1">
+        <div className="text-xs font-medium text-[#667085] dark:text-slate-400">{messages.selectedSize(rows, cols)}</div>
+        <Button className="h-8 rounded-md px-3 text-xs" size="sm" variant="outline" onClick={onClose}>
+          {messages.cancel}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function NoteEditor({
   note,
   allNotes,
-  pathTitles,
   requestedMode,
   modeRequestId,
   isLoading,
@@ -461,6 +702,7 @@ export function NoteEditor({
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
   const [isFormatMenuOpen, setIsFormatMenuOpen] = useState(false)
   const [isHighlightMenuOpen, setIsHighlightMenuOpen] = useState(false)
+  const [activeTableMenu, setActiveTableMenu] = useState<"column" | "row" | "cell" | "header" | "danger" | null>(null)
   const [isTocOpen, setIsTocOpen] = useState(false)
   const [isVersionPanelOpen, setIsVersionPanelOpen] = useState(false)
   const [isLoadingVersions, setIsLoadingVersions] = useState(false)
@@ -474,12 +716,16 @@ export function NoteEditor({
   const [aiWriteState, setAiWriteState] = useState<AiWriteState | null>(null)
   const [noteLinkPicker, setNoteLinkPicker] = useState<NoteLinkPickerState | null>(null)
   const [lightboxImage, setLightboxImage] = useState<LightboxImageState | null>(null)
+  const [tableInsertPicker, setTableInsertPicker] = useState<TableInsertPickerState | null>(null)
   const [backlinks, setBacklinks] = useState<NoteSummary[]>([])
   const menuRef = useRef<HTMLDivElement>(null)
   const formatMenuRef = useRef<HTMLDivElement>(null)
   const highlightMenuRef = useRef<HTMLDivElement>(null)
+  const tableMenuRef = useRef<HTMLDivElement>(null)
   const slashMenuRef = useRef<HTMLDivElement>(null)
   const noteLinkPickerRef = useRef<HTMLDivElement>(null)
+  const tableInsertPickerRef = useRef<HTMLDivElement>(null)
+  const tableToolbarPickerRef = useRef<HTMLDivElement>(null)
   const editorSurfaceRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<Editor | null>(null)
   const tocOpenRef = useRef(false)
@@ -488,6 +734,7 @@ export function NoteEditor({
   const slashCommandRef = useRef<SlashCommandState | null>(null)
   const aiWriteStateRef = useRef<AiWriteState | null>(null)
   const noteLinkPickerStateRef = useRef<NoteLinkPickerState | null>(null)
+  const tableInsertPickerStateRef = useRef<TableInsertPickerState | null>(null)
   const slashCommandsRef = useRef<SlashCommandItem[]>([])
   const currentNoteLinkIdsRef = useRef<string[]>([])
   const noteLinkResolutionRequestRef = useRef(0)
@@ -505,7 +752,6 @@ export function NoteEditor({
   const emptyDocument = useMemo(() => createEmptyDocument(), [])
   const displayedContent = selectedVersionContent ?? note?.content ?? emptyDocument
   const displayedContentSnapshot = useMemo(() => JSON.stringify(displayedContent), [displayedContent])
-  const ancestorTitles = pathTitles.slice(0, -1)
   const linkableNotes = useMemo(
     () => allNotes.filter((item) => item.status === "active" && item.id !== note?.id),
     [allNotes, note?.id],
@@ -877,6 +1123,63 @@ export function NoteEditor({
       })
     }
   }
+
+  function openTableInsertPicker(options: {
+    source: "toolbar" | "slash"
+    insertPosition?: number
+    position?: AiWritePanelPosition | null
+  }) {
+    if (!editor) {
+      return
+    }
+
+    setSlashCommand(null)
+    setNoteLinkPickerState(null)
+    setTableInsertPicker(null)
+    setActiveTableMenu(null)
+    setIsFormatMenuOpen(false)
+    setIsHighlightMenuOpen(false)
+
+    const insertPosition = options.insertPosition ?? editor.state.selection.from
+    const position =
+      options.source === "slash"
+        ? options.position ??
+          resolveOverlayPosition(insertPosition, 272) ?? {
+            top: 24,
+            left: 24,
+          }
+        : null
+
+    setTableInsertPicker({
+      source: options.source,
+      insertPosition,
+      position,
+      rows: 3,
+      cols: 3,
+    })
+  }
+
+  function closeTableInsertPicker(restoreFocus = false) {
+    const currentPicker = tableInsertPickerStateRef.current
+    setTableInsertPicker(null)
+
+    if (restoreFocus && currentPicker && editor) {
+      scheduleEditorSelectionWork(() => {
+        editor.chain().focus(currentPicker.insertPosition).run()
+      })
+    }
+  }
+
+  function handleSelectTableSize(rows: number, cols: number) {
+    const currentPicker = tableInsertPickerStateRef.current
+
+    if (!editor || !currentPicker) {
+      return
+    }
+
+    editor.chain().focus(currentPicker.insertPosition).insertTable({ rows, cols, withHeaderRow: true }).run()
+    setTableInsertPicker(null)
+  }
   const editor = useEditor(
     {
       editable: canEditNote && isEditing && !isVersionPreviewing,
@@ -1020,8 +1323,8 @@ export function NoteEditor({
           getPathLabel: (noteId) => notePathLabelsRef.current.get(noteId) ?? null,
           onOpenNote: (noteId) => openLinkedNoteRef.current(noteId),
         }),
-        Table.configure({
-          resizable: false,
+        ManagedTable.configure({
+          resizable: true,
           renderWrapper: true,
         }),
         TableRow,
@@ -1064,6 +1367,22 @@ export function NoteEditor({
           class: "ProseMirror px-0 py-0 text-[16px] leading-[1.75rem] text-[#344054] focus:outline-none",
         },
         handleKeyDown(_view, event) {
+          const currentTableInsertPicker = tableInsertPickerStateRef.current
+
+          if (currentTableInsertPicker) {
+            if (event.key === "Escape") {
+              event.preventDefault()
+              closeTableInsertPicker(true)
+              return true
+            }
+
+            if (event.key === "Enter") {
+              event.preventDefault()
+              handleSelectTableSize(currentTableInsertPicker.rows, currentTableInsertPicker.cols)
+              return true
+            }
+          }
+
           const currentSlashCommand = slashCommandRef.current
           const currentSlashCommands = slashCommandsRef.current
 
@@ -1236,6 +1555,55 @@ export function NoteEditor({
       })),
     ]
   }, [locale, messages.editor.versionHistory, messages.editor.wordCount, note, versionSummaries])
+  const isTableEditingActive = Boolean(editor && canEditNote && isEditing && !isVersionPreviewing && editor.isActive("table"))
+  const selectedTable = editor ? findSelectedTable(editor.state) : null
+  const isTableIndexColumnEnabled = Boolean(selectedTable?.node.attrs.indexColumn)
+  const canInsertColumnBefore = Boolean(editor && isTableEditingActive && editor.can().addColumnBefore())
+  const canInsertColumnAfter = Boolean(editor && isTableEditingActive && editor.can().addColumnAfter())
+  const canDeleteCurrentColumn = Boolean(editor && isTableEditingActive && editor.can().deleteColumn())
+  const canInsertRowAbove = Boolean(editor && isTableEditingActive && editor.can().addRowBefore())
+  const canInsertRowBelow = Boolean(editor && isTableEditingActive && editor.can().addRowAfter())
+  const canDeleteCurrentRow = Boolean(editor && isTableEditingActive && editor.can().deleteRow())
+  const canMergeCells = Boolean(editor && isTableEditingActive && editor.can().mergeCells())
+  const canSplitCell = Boolean(editor && isTableEditingActive && editor.can().splitCell())
+  const canToggleHeaderRow = Boolean(editor && isTableEditingActive && editor.can().toggleHeaderRow())
+  const canToggleHeaderColumn = Boolean(editor && isTableEditingActive && editor.can().toggleHeaderColumn())
+  const canDeleteCurrentTable = Boolean(editor && isTableEditingActive && editor.can().deleteTable())
+
+  function handleToggleTableIndexColumn() {
+    if (!editor) {
+      return
+    }
+
+    const didToggle = editor
+      .chain()
+      .focus(undefined, { scrollIntoView: false })
+      .command(({ tr, state }) => {
+        const table = findSelectedTable(state)
+
+        if (!table) {
+          return false
+        }
+
+        const nextIndexColumnEnabled = !Boolean(table.node.attrs.indexColumn)
+
+        tr.setNodeMarkup(table.pos, undefined, {
+          ...table.node.attrs,
+          indexColumn: nextIndexColumnEnabled,
+        })
+
+        if (nextIndexColumnEnabled) {
+          syncIndexedTableAtPosition(tr, table.pos)
+        }
+
+        return true
+      })
+      .run()
+
+    if (didToggle) {
+      setActiveTableMenu(null)
+    }
+  }
 
   useEffect(() => {
     editorRef.current = editor ?? null
@@ -1294,6 +1662,7 @@ export function NoteEditor({
     setIsRestoringVersion(false)
     setVisibleTocPos(null)
     setLightboxImage(null)
+    setTableInsertPicker(null)
   }, [note?.id, note?.status])
 
   useEffect(() => {
@@ -1493,6 +1862,34 @@ export function NoteEditor({
     }
   }, [isFormatMenuOpen])
 
+  useEffect(() => {
+    if (!activeTableMenu) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (tableMenuRef.current?.contains(event.target as Node)) {
+        return
+      }
+
+      setActiveTableMenu(null)
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setActiveTableMenu(null)
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown)
+    document.addEventListener("keydown", handleKeyDown)
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown)
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [activeTableMenu])
+
   const visibleSlashCommands = useMemo(() => {
     if (!slashCommand) {
       return []
@@ -1514,6 +1911,10 @@ export function NoteEditor({
   useEffect(() => {
     noteLinkPickerStateRef.current = noteLinkPicker
   }, [noteLinkPicker])
+
+  useEffect(() => {
+    tableInsertPickerStateRef.current = tableInsertPicker
+  }, [tableInsertPicker])
 
   useEffect(() => {
     notePathLabelsRef.current = notePathLabels
@@ -1558,6 +1959,12 @@ export function NoteEditor({
   useEffect(() => {
     void resolveCurrentNoteLinks(extractNoteLinkIds(note?.content ?? null))
   }, [note?.content, note?.id, note?.status])
+
+  useEffect(() => {
+    if (!isTableEditingActive) {
+      setActiveTableMenu(null)
+    }
+  }, [isTableEditingActive])
 
   useEffect(() => {
     if (!note?.id || note.status !== "active") {
@@ -1735,6 +2142,28 @@ export function NoteEditor({
   }, [noteLinkPicker])
 
   useEffect(() => {
+    if (!tableInsertPicker) {
+      return
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node
+
+      if (tableInsertPickerRef.current?.contains(target) || tableToolbarPickerRef.current?.contains(target)) {
+        return
+      }
+
+      closeTableInsertPicker()
+    }
+
+    document.addEventListener("mousedown", handlePointerDown)
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown)
+    }
+  }, [tableInsertPicker])
+
+  useEffect(() => {
     const removeChunkListener = window.metisNote.llm.onStreamChunk((streamId, chunk) => {
       setAiWriteState((current) => {
         if (!current || current.streamId !== streamId) {
@@ -1802,6 +2231,8 @@ export function NoteEditor({
     setSlashCommand(null)
     setNoteLinkPickerState(null)
     setAiWriteState(null)
+    setTableInsertPicker(null)
+    setActiveTableMenu(null)
 
     if (currentAiWriteState?.streamId) {
       void window.metisNote.llm.cancelStream(currentAiWriteState.streamId).catch(() => undefined)
@@ -1818,17 +2249,26 @@ export function NoteEditor({
     }
   }, [])
 
-  async function startAiWriteStream(request: LlmStreamChatParams, insertPosition: number, position: AiWritePanelPosition) {
+  async function startAiWriteStream(
+    request: LlmStreamChatParams,
+    insertPosition: number,
+    position: AiWritePanelPosition,
+    context: AiWriteContext,
+    userInstruction: string,
+  ) {
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
     setSlashCommand(null)
     setNoteLinkPickerState(null)
+    setActiveTableMenu(null)
     setAiWriteState({
       requestId,
       streamId: null,
       insertPosition,
       position,
       status: "thinking",
+      context,
+      userInstruction,
       generatedText: "",
       errorMessage: null,
       request,
@@ -1902,12 +2342,18 @@ export function NoteEditor({
   function handleRetryAiWrite() {
     const currentAiWriteState = aiWriteStateRef.current
 
-    if (!currentAiWriteState) {
+    if (!currentAiWriteState || !currentAiWriteState.request) {
       return
     }
 
     const nextPosition = resolveOverlayPosition(currentAiWriteState.insertPosition, 520) ?? currentAiWriteState.position
-    void startAiWriteStream(currentAiWriteState.request, currentAiWriteState.insertPosition, nextPosition)
+    void startAiWriteStream(
+      currentAiWriteState.request,
+      currentAiWriteState.insertPosition,
+      nextPosition,
+      currentAiWriteState.context,
+      currentAiWriteState.userInstruction,
+    )
   }
 
   function triggerAiWriteFromSelection(fallbackPosition: AiWritePanelPosition | null = null) {
@@ -1917,10 +2363,6 @@ export function NoteEditor({
 
     const insertPosition = editor.state.selection.from
     const context = collectAiWriteContext(editor, note.title, insertPosition)
-    const request: LlmStreamChatParams = {
-      systemPrompt: getAiWriteSystemPrompt(locale),
-      userPrompt: buildAiWriteUserPrompt(locale, context),
-    }
     const position =
       resolveOverlayPosition(insertPosition, 520) ??
       fallbackPosition ?? {
@@ -1928,7 +2370,68 @@ export function NoteEditor({
         left: 20,
       }
 
-    void startAiWriteStream(request, insertPosition, position)
+    setSlashCommand(null)
+    setNoteLinkPickerState(null)
+    setActiveTableMenu(null)
+    setAiWriteState({
+      requestId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      streamId: null,
+      insertPosition,
+      position,
+      status: "prompting",
+      context,
+      userInstruction: "",
+      generatedText: "",
+      errorMessage: null,
+      request: null,
+    })
+  }
+
+  function handleAiWritePromptChange(value: string) {
+    setAiWriteState((current) =>
+      current
+        ? {
+            ...current,
+            userInstruction: value,
+            errorMessage: current.status === "prompting" ? null : current.errorMessage,
+          }
+        : current,
+    )
+  }
+
+  function handleSubmitAiWritePrompt() {
+    const currentAiWriteState = aiWriteStateRef.current
+
+    if (!currentAiWriteState || currentAiWriteState.status !== "prompting") {
+      return
+    }
+
+    const userInstruction = currentAiWriteState.userInstruction.trim()
+
+    if (!userInstruction) {
+      setAiWriteState((current) =>
+        current
+          ? {
+              ...current,
+              errorMessage: messages.editor.aiWrite.promptRequiredError,
+            }
+          : current,
+      )
+      return
+    }
+
+    const request: LlmStreamChatParams = {
+      systemPrompt: getAiWriteSystemPrompt(locale),
+      userPrompt: buildAiWriteUserPromptWithInstruction(locale, currentAiWriteState.context, userInstruction),
+    }
+
+    void startAiWriteStream(
+      request,
+      currentAiWriteState.insertPosition,
+      currentAiWriteState.position,
+      currentAiWriteState.context,
+      userInstruction,
+    )
   }
 
   function showAssetError(error: unknown, fallbackMessage: string) {
@@ -2011,6 +2514,7 @@ export function NoteEditor({
 
     setSlashCommand(null)
     setNoteLinkPickerState(null)
+    setTableInsertPicker(null)
     setIsFormatMenuOpen(false)
     setIsHighlightMenuOpen(false)
 
@@ -2034,6 +2538,8 @@ export function NoteEditor({
 
     setSlashCommand(null)
     setNoteLinkPickerState(null)
+    setTableInsertPicker(null)
+    setActiveTableMenu(null)
     setIsFormatMenuOpen(false)
     setIsHighlightMenuOpen(false)
 
@@ -2057,6 +2563,8 @@ export function NoteEditor({
 
     setSlashCommand(null)
     setNoteLinkPickerState(null)
+    setTableInsertPicker(null)
+    setActiveTableMenu(null)
     setIsHighlightMenuOpen(false)
 
     try {
@@ -2080,6 +2588,8 @@ export function NoteEditor({
     editor.chain().focus().toggleHighlight({ color }).run()
     setIsFormatMenuOpen(false)
     setIsHighlightMenuOpen(false)
+    setTableInsertPicker(null)
+    setActiveTableMenu(null)
   }
 
   function handleSetTextAlign(alignment: "left" | "center" | "right") {
@@ -2087,6 +2597,8 @@ export function NoteEditor({
       return
     }
 
+    setTableInsertPicker(null)
+    setActiveTableMenu(null)
     editor.chain().focus().setTextAlign(alignment).run()
   }
 
@@ -2095,7 +2607,10 @@ export function NoteEditor({
       return
     }
 
-    editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+    openTableInsertPicker({
+      source: "toolbar",
+      insertPosition: editor.state.selection.from,
+    })
   }
 
   function handleInsertDetails() {
@@ -2209,6 +2724,8 @@ export function NoteEditor({
       setIsTocOpen(false)
       setSlashCommand(null)
       setNoteLinkPickerState(null)
+      setTableInsertPicker(null)
+      setActiveTableMenu(null)
       setSelectedVersionTimestamp(timestamp)
       setSelectedVersionContent(content)
     } catch (error) {
@@ -2246,6 +2763,8 @@ export function NoteEditor({
     setIsVersionPanelOpen(false)
     setSlashCommand(null)
     setNoteLinkPickerState(null)
+    setTableInsertPicker(null)
+    setActiveTableMenu(null)
 
     const insertPosition = editor.state.selection.from
 
@@ -2269,6 +2788,8 @@ export function NoteEditor({
     setSlashCommand(null)
     setIsFormatMenuOpen(false)
     setIsHighlightMenuOpen(false)
+    setTableInsertPicker(null)
+    setActiveTableMenu(null)
 
     switch (command.id) {
       case "ai-write":
@@ -2293,7 +2814,11 @@ export function NoteEditor({
         editor.chain().focus(insertPosition).toggleTaskList().run()
         return
       case "table":
-        editor.chain().focus(insertPosition).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+        openTableInsertPicker({
+          source: "slash",
+          insertPosition,
+          position: resolveOverlayPosition(insertPosition, 272) ?? currentSlashCommand.position,
+        })
         return
       case "details":
         editor.chain().focus(insertPosition).setDetails().run()
@@ -2363,6 +2888,8 @@ export function NoteEditor({
     setIsVersionPanelOpen(false)
     setSlashCommand(null)
     setNoteLinkPickerState(null)
+    setTableInsertPicker(null)
+    setActiveTableMenu(null)
     editor.chain().focus().run()
     triggerAiWriteFromSelection(resolveOverlayPosition(editor.state.selection.from, 520))
   }
@@ -2563,11 +3090,8 @@ export function NoteEditor({
                 ) : null}
               </div>
 
-              {!isFocusMode && (ancestorTitles.length > 0 || note.visibility === "public") ? (
+              {!isFocusMode && note.visibility === "public" ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2.5 text-[12px] text-[#8d95a2] dark:text-slate-500">
-                  {ancestorTitles.length > 0 ? (
-                    <span className="truncate font-medium">{ancestorTitles.join(" / ")}</span>
-                  ) : null}
                   {note.visibility === "public" ? <MetaPill>{messages.editor.publicVisibility}</MetaPill> : null}
                 </div>
               ) : null}
@@ -2957,14 +3481,46 @@ export function NoteEditor({
                       >
                         <Code2 className="h-4 w-4" />
                       </ToolbarButton>
-                      <ToolbarButton
-                        active={editor?.isActive("table")}
-                        disabled={isToolbarDisabled}
-                        title={messages.editor.commands.table}
-                        onClick={handleInsertTable}
-                      >
-                        <span className="text-[10px] font-semibold uppercase">tbl</span>
-                      </ToolbarButton>
+                      <div className="relative" ref={tableToolbarPickerRef}>
+                        <ToolbarButton
+                          active={editor?.isActive("table") || tableInsertPicker?.source === "toolbar"}
+                          disabled={isToolbarDisabled}
+                          title={messages.editor.commands.table}
+                          onClick={() => {
+                            if (tableInsertPicker?.source === "toolbar") {
+                              closeTableInsertPicker(true)
+                              return
+                            }
+
+                            handleInsertTable()
+                          }}
+                        >
+                          <span className="text-[10px] font-semibold uppercase">tbl</span>
+                        </ToolbarButton>
+
+                        {tableInsertPicker?.source === "toolbar" ? (
+                          <div className="absolute left-0 top-full z-30 mt-2">
+                            <TableInsertPicker
+                              messages={messages.editor.tablePicker}
+                              rows={tableInsertPicker.rows}
+                              cols={tableInsertPicker.cols}
+                              onClose={() => closeTableInsertPicker(true)}
+                              onHoverSize={(rows, cols) => {
+                                setTableInsertPicker((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        rows,
+                                        cols,
+                                      }
+                                    : current,
+                                )
+                              }}
+                              onSelectSize={handleSelectTableSize}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
                       <ToolbarButton
                         active={editor?.isActive("details")}
                         disabled={isToolbarDisabled}
@@ -3059,6 +3615,208 @@ export function NoteEditor({
                         {messages.editor.aiWrite.slashLabel}
                       </Button>
                     </div>
+
+                    {isTableEditingActive ? (
+                      <div className="mt-2 w-full border-t border-[#eef2f7] pt-2 dark:border-[#1f2937]">
+                        <div ref={tableMenuRef} className="flex max-w-full flex-wrap items-center gap-0.5">
+                          <div className="relative">
+                            <ToolbarButton
+                              active={activeTableMenu === "column"}
+                              disabled={isToolbarDisabled}
+                              title={messages.editor.tableControls.columnMenu}
+                              onClick={() => {
+                                setActiveTableMenu((current) => (current === "column" ? null : "column"))
+                              }}
+                            >
+                              <TableColumnsSplit className="h-4 w-4" />
+                            </ToolbarButton>
+
+                            {activeTableMenu === "column" ? (
+                              <div className="absolute left-0 top-[calc(100%+0.45rem)] z-30 w-[220px] rounded-2xl border border-[#e7ebf1] bg-white p-2 shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-[#243041] dark:bg-[#111827]">
+                                <MenuItemButton
+                                  onClick={() => {
+                                    editor?.chain().focus().addColumnBefore().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.insertColumnBefore}</span>
+                                </MenuItemButton>
+                                <MenuItemButton
+                                  onClick={() => {
+                                    editor?.chain().focus().addColumnAfter().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.insertColumnAfter}</span>
+                                </MenuItemButton>
+                                <MenuItemButton
+                                  className={!canDeleteCurrentColumn ? "pointer-events-none opacity-50" : undefined}
+                                  onClick={() => {
+                                    editor?.chain().focus().deleteColumn().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.deleteColumn}</span>
+                                </MenuItemButton>
+                                <MenuItemButton onClick={handleToggleTableIndexColumn}>
+                                  <span>
+                                    {isTableIndexColumnEnabled
+                                      ? messages.editor.tableControls.disableIndexColumn
+                                      : messages.editor.tableControls.enableIndexColumn}
+                                  </span>
+                                </MenuItemButton>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="relative">
+                            <ToolbarButton
+                              active={activeTableMenu === "row"}
+                              disabled={isToolbarDisabled}
+                              title={messages.editor.tableControls.rowMenu}
+                              onClick={() => {
+                                setActiveTableMenu((current) => (current === "row" ? null : "row"))
+                              }}
+                            >
+                              <TableRowsSplit className="h-4 w-4" />
+                            </ToolbarButton>
+
+                            {activeTableMenu === "row" ? (
+                              <div className="absolute left-0 top-[calc(100%+0.45rem)] z-30 w-[220px] rounded-2xl border border-[#e7ebf1] bg-white p-2 shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-[#243041] dark:bg-[#111827]">
+                                <MenuItemButton
+                                  onClick={() => {
+                                    editor?.chain().focus().addRowBefore().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.insertRowAbove}</span>
+                                </MenuItemButton>
+                                <MenuItemButton
+                                  onClick={() => {
+                                    editor?.chain().focus().addRowAfter().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.insertRowBelow}</span>
+                                </MenuItemButton>
+                                <MenuItemButton
+                                  className={!canDeleteCurrentRow ? "pointer-events-none opacity-50" : undefined}
+                                  onClick={() => {
+                                    editor?.chain().focus().deleteRow().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.deleteRow}</span>
+                                </MenuItemButton>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="relative">
+                            <ToolbarButton
+                              active={activeTableMenu === "cell"}
+                              disabled={isToolbarDisabled}
+                              title={messages.editor.tableControls.cellMenu}
+                              onClick={() => {
+                                setActiveTableMenu((current) => (current === "cell" ? null : "cell"))
+                              }}
+                            >
+                              <TableCellsMerge className="h-4 w-4" />
+                            </ToolbarButton>
+
+                            {activeTableMenu === "cell" ? (
+                              <div className="absolute left-0 top-[calc(100%+0.45rem)] z-30 w-[220px] rounded-2xl border border-[#e7ebf1] bg-white p-2 shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-[#243041] dark:bg-[#111827]">
+                                <MenuItemButton
+                                  className={!canMergeCells ? "pointer-events-none opacity-50" : undefined}
+                                  onClick={() => {
+                                    editor?.chain().focus().mergeCells().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.mergeCells}</span>
+                                </MenuItemButton>
+                                <MenuItemButton
+                                  className={!canSplitCell ? "pointer-events-none opacity-50" : undefined}
+                                  onClick={() => {
+                                    editor?.chain().focus().splitCell().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.splitCell}</span>
+                                </MenuItemButton>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="relative">
+                            <ToolbarButton
+                              active={activeTableMenu === "header"}
+                              disabled={isToolbarDisabled}
+                              title={messages.editor.tableControls.headerMenu}
+                              onClick={() => {
+                                setActiveTableMenu((current) => (current === "header" ? null : "header"))
+                              }}
+                            >
+                              <PanelTop className="h-4 w-4" />
+                            </ToolbarButton>
+
+                            {activeTableMenu === "header" ? (
+                              <div className="absolute left-0 top-[calc(100%+0.45rem)] z-30 w-[220px] rounded-2xl border border-[#e7ebf1] bg-white p-2 shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-[#243041] dark:bg-[#111827]">
+                                <MenuItemButton
+                                  className={!canToggleHeaderRow ? "pointer-events-none opacity-50" : undefined}
+                                  onClick={() => {
+                                    editor?.chain().focus().toggleHeaderRow().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.toggleHeaderRow}</span>
+                                </MenuItemButton>
+                                <MenuItemButton
+                                  className={!canToggleHeaderColumn ? "pointer-events-none opacity-50" : undefined}
+                                  onClick={() => {
+                                    editor?.chain().focus().toggleHeaderColumn().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <span>{messages.editor.tableControls.toggleHeaderColumn}</span>
+                                </MenuItemButton>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <span className="mx-1 h-4 w-px bg-[#e7ebf1] dark:bg-[#243041]" />
+
+                          <div className="relative">
+                            <ToolbarButton
+                              active={activeTableMenu === "danger"}
+                              disabled={isToolbarDisabled}
+                              title={messages.editor.tableControls.dangerMenu}
+                              tone="danger"
+                              onClick={() => {
+                                setActiveTableMenu((current) => (current === "danger" ? null : "danger"))
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </ToolbarButton>
+
+                            {activeTableMenu === "danger" ? (
+                              <div className="absolute right-0 top-[calc(100%+0.45rem)] z-30 w-[220px] rounded-2xl border border-[#e7ebf1] bg-white p-2 shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-[#243041] dark:bg-[#111827]">
+                                <MenuItemButton
+                                  className="text-[#b42318] hover:bg-[rgba(180,35,24,0.06)] hover:text-[#b42318] dark:text-[#fda29b] dark:hover:bg-[#261318] dark:hover:text-[#fda29b]"
+                                  onClick={() => {
+                                    editor?.chain().focus().deleteTable().run()
+                                    setActiveTableMenu(null)
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4 shrink-0" />
+                                  <span>{messages.editor.tableControls.deleteTable}</span>
+                                </MenuItemButton>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -3083,7 +3841,38 @@ export function NoteEditor({
                       </span>
                     </TiptapDragHandle>
                   ) : null}
+
                   <EditorContent editor={editor} />
+
+                  {tableInsertPicker?.source === "slash" && tableInsertPicker.position ? (
+                    <div
+                      ref={tableInsertPickerRef}
+                      className="absolute z-30"
+                      style={{
+                        top: tableInsertPicker.position.top,
+                        left: tableInsertPicker.position.left,
+                      }}
+                    >
+                      <TableInsertPicker
+                        messages={messages.editor.tablePicker}
+                        rows={tableInsertPicker.rows}
+                        cols={tableInsertPicker.cols}
+                        onClose={() => closeTableInsertPicker(true)}
+                        onHoverSize={(rows, cols) => {
+                          setTableInsertPicker((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  rows,
+                                  cols,
+                                }
+                              : current,
+                          )
+                        }}
+                        onSelectSize={handleSelectTableSize}
+                      />
+                    </div>
+                  ) : null}
 
                   {slashCommand && visibleSlashCommands.length > 0 ? (
                     <div
@@ -3198,10 +3987,13 @@ export function NoteEditor({
                     errorMessage={aiWriteState.errorMessage}
                     messages={messages.editor.aiWrite}
                     position={aiWriteState.position}
+                    promptValue={aiWriteState.userInstruction}
                     status={aiWriteState.status}
                     text={aiWriteState.generatedText}
                     onCancel={handleCancelAiWrite}
                     onConfirm={handleConfirmAiWrite}
+                    onPromptChange={handleAiWritePromptChange}
+                    onPromptSubmit={handleSubmitAiWritePrompt}
                     onRetry={handleRetryAiWrite}
                   />
                   ) : null}

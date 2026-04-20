@@ -21,6 +21,16 @@ import type {
 import type { SaveTemplateInput, TemplateDocument, TemplateSummary } from "./shared/templates"
 import type { AppUpdateCheckResult, AppUpdateCurrentInfo, AppUpdateDownloadResult } from "./shared/updates"
 import type { NoteVersionContent, VersionSummary } from "./shared/versions"
+import type {
+  BaiduPanAuthResult,
+  ConflictResolution,
+  GoogleDriveAuthResult,
+  NoteSyncStateMap,
+  SyncConfig,
+  SyncConflict,
+  SyncResult,
+  SyncStatus,
+} from "./shared/sync"
 
 declare global {
   interface Window {
@@ -29,7 +39,6 @@ declare global {
         list: () => Promise<NoteSummary[]>
         get: (id: string) => Promise<NoteDocument | null>
         create: (payload?: CreateNoteInput) => Promise<NoteDocument>
-        createFromTemplate: (templateId: string, payload?: CreateNoteInput) => Promise<NoteDocument>
         update: (id: string, payload: UpdateNoteInput) => Promise<NoteDocument>
         trash: (id: string) => Promise<NoteDocument>
         restore: (id: string) => Promise<NoteDocument>
@@ -84,6 +93,21 @@ declare global {
         check: () => Promise<AppUpdateCheckResult>
         downloadLatest: () => Promise<AppUpdateDownloadResult>
         openReleasePage: (releasePageUrl?: string) => Promise<void>
+      }
+      sync: {
+        getStatus: () => Promise<SyncStatus>
+        getConfig: () => Promise<SyncConfig | null>
+        configure: (config: SyncConfig) => Promise<void>
+        authorizeBaiduPan: () => Promise<BaiduPanAuthResult>
+        authorizeGoogleDrive: (clientId: string) => Promise<GoogleDriveAuthResult>
+        syncNow: () => Promise<SyncResult>
+        setPassphrase: (passphrase: string) => Promise<void>
+        clearPassphrase: () => Promise<void>
+        getPendingConflicts: () => Promise<SyncConflict[]>
+        getNoteSyncStates: () => Promise<NoteSyncStateMap>
+        resolveConflict: (conflictId: string, resolution: ConflictResolution) => Promise<void>
+        onStatusChanged: (callback: (status: SyncStatus) => void) => () => void
+        onSyncCompleted: (callback: (result: SyncResult) => void) => () => void
       }
     }
   }

@@ -2,13 +2,12 @@ import { readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { BrowserWindow, dialog, ipcMain, type OpenDialogOptions, type SaveDialogOptions } from "electron"
 import { getMessages, type AppLocale } from "../../../src/shared/i18n"
-import { extractPlainTextFromContent, type CreateNoteInput, type UpdateNoteInput } from "../../../src/shared/notes"
+import type { CreateNoteInput, UpdateNoteInput } from "../../../src/shared/notes"
 import { defaultExportPath, documentFromMarkdown, fallbackTitleFromPath, noteToMarkdown } from "../services/note-markdown"
 import { AssetStore } from "../services/asset-store"
 import { NoteStore } from "../services/note-store"
-import { TemplateStore } from "../services/template-store"
 
-export function registerNoteHandlers(store: NoteStore, assetStore: AssetStore, templateStore: TemplateStore, locale: AppLocale) {
+export function registerNoteHandlers(store: NoteStore, assetStore: AssetStore, locale: AppLocale) {
   const messages = getMessages(locale)
   ipcMain.removeHandler("notes:list")
   ipcMain.removeHandler("notes:get")
@@ -22,7 +21,6 @@ export function registerNoteHandlers(store: NoteStore, assetStore: AssetStore, t
   ipcMain.removeHandler("notes:exportMarkdown")
   ipcMain.removeHandler("notes:exportPdf")
   ipcMain.removeHandler("notes:print")
-  ipcMain.removeHandler("notes:createFromTemplate")
 
   ipcMain.handle("notes:list", async () => {
     return store.list()
@@ -34,31 +32,6 @@ export function registerNoteHandlers(store: NoteStore, assetStore: AssetStore, t
 
   ipcMain.handle("notes:create", async (_event, payload?: CreateNoteInput) => {
     return store.create(payload)
-  })
-
-  ipcMain.handle("notes:createFromTemplate", async (_event, templateId: string, payload?: CreateNoteInput) => {
-    const template = await templateStore.get(templateId)
-
-    if (!template) {
-      throw new Error(messages.settings.templates.errors.notFound)
-    }
-
-    const created = await store.create({
-      ...(payload ?? {}),
-      title: template.title,
-      content: template.content,
-      plainText: extractPlainTextFromContent(template.content),
-    })
-    const clonedContent = await assetStore.cloneReferencedAssets(template.content, created.id)
-
-    if (JSON.stringify(clonedContent) === JSON.stringify(template.content)) {
-      return created
-    }
-
-    return store.update(created.id, {
-      content: clonedContent,
-      plainText: extractPlainTextFromContent(clonedContent),
-    })
   })
 
   ipcMain.handle("notes:update", async (_event, id: string, payload: UpdateNoteInput) => {

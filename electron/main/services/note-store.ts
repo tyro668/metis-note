@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises"
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import path from "node:path"
 import type { JSONContent } from "@tiptap/core"
 import { getMessages, type AppLocale } from "../../../src/shared/i18n"
@@ -8,7 +8,6 @@ import {
   countWords,
   createEmptyDocument,
   extractNoteLinkIds,
-  createWelcomeDocument,
   normalizeTags,
   normalizeTitle,
   normalizeWorkspaceName,
@@ -23,6 +22,7 @@ import {
 } from "../../../src/shared/notes"
 import { AssetStore } from "./asset-store"
 import { NoteLinkStore } from "./note-link-store"
+import { rebuildIndexFromItems } from "./sync/index-rebuilder"
 import { VersionStore } from "./version-store"
 
 interface LegacyNoteSummaryV1 {
@@ -75,12 +75,7 @@ export class NoteStore {
       await this.writeIndex([])
     }
 
-    const notes = await this.readIndex()
-
-    if (notes.length === 0) {
-      await this.createWelcomeNote()
-    }
-
+    await this.readIndex()
     await this.syncLinkIndex()
 
     this.initialized = true
@@ -102,7 +97,19 @@ export class NoteStore {
       return null
     }
 
-    const content = await this.readContent(summary.id)
+    let content: JSONContent
+
+    try {
+      content = await this.readContent(summary.id)
+    } catch (error) {
+      if (!this.isMissingFileError(error)) {
+        throw error
+      }
+
+      console.warn(`[metis-note] Note content file is missing and will be pruned from index: ${summary.id}`)
+      await this.pruneMissingNotes([summary.id])
+      return null
+    }
 
     return {
       ...summary,
@@ -128,6 +135,7 @@ export class NoteStore {
       updatedAt: now,
       wordCount: countWords(plainText),
       isPinned: seed.isPinned ?? false,
+      isFavorite: seed.isFavorite ?? false,
       status: "active",
       tags: normalizeTags(seed.tags ?? []),
       workspace,
@@ -159,6 +167,7 @@ export class NoteStore {
     const nextStatus: NoteStatus = payload.status ?? current.status
     const nextTags = payload.tags ? normalizeTags(payload.tags) : current.tags
     const nextIsPinned = nextStatus === "trashed" ? false : payload.isPinned ?? current.isPinned
+    const nextIsFavorite = nextStatus === "trashed" ? false : payload.isFavorite ?? current.isFavorite
     const nextWorkspace: NoteWorkspace = payload.workspace ?? current.workspace
     const nextVisibility: NoteVisibility = payload.visibility ?? current.visibility
     const hasParentId = Object.prototype.hasOwnProperty.call(payload, "parentId")
@@ -173,6 +182,7 @@ export class NoteStore {
       wordCount: countWords(plainText),
       updatedAt,
       isPinned: nextIsPinned,
+      isFavorite: nextIsFavorite,
       status: nextStatus,
       tags: nextTags,
       workspace: nextWorkspace,
@@ -211,6 +221,7 @@ export class NoteStore {
             ...note,
             status: "trashed" as const,
             isPinned: false,
+            isFavorite: false,
             updatedAt,
           }
         : note,
@@ -337,7 +348,12 @@ export class NoteStore {
       (
         await Promise.all(
           notes.map(async (note) => {
-            const content = await this.readContent(note.id)
+            const content = await this.readContentIfExists(note.id)
+
+            if (!content) {
+              return null
+            }
+
             const targetIds = extractNoteLinkIds(content)
 
             return targetIds.length > 0 ? ([note.id, targetIds] as const) : null
@@ -347,125 +363,6 @@ export class NoteStore {
     )
 
     await this.noteLinkStore.replaceAllOutgoing(outgoing)
-  }
-
-  private async createWelcomeNote() {
-    const now = new Date().toISOString()
-    const content = createWelcomeDocument(this.locale)
-    const seeds = this.messages.notes.seeds
-    const workspaceName = this.messages.notes.workspacePersonal
-    const plainText = seeds.welcomePlainText
-
-    const welcomeNote: NoteDocument = {
-      id: randomUUID(),
-      parentId: null,
-      title: seeds.welcomeTitle,
-      preview: buildPreview(plainText, this.locale),
-      plainText,
-      createdAt: now,
-      updatedAt: now,
-      wordCount: countWords(plainText),
-      isPinned: true,
-      status: "active",
-      tags: seeds.welcomeTags,
-      workspace: "personal",
-      workspaceName,
-      visibility: "private",
-      content,
-    }
-
-    const roadmapPlainText = seeds.roadmapPlainText
-    const roadmapNote: NoteDocument = {
-      id: randomUUID(),
-      parentId: welcomeNote.id,
-      title: seeds.roadmapTitle,
-      preview: buildPreview(roadmapPlainText, this.locale),
-      plainText: roadmapPlainText,
-      createdAt: now,
-      updatedAt: now,
-      wordCount: countWords(roadmapPlainText),
-      isPinned: false,
-      status: "active",
-      tags: seeds.roadmapTags,
-      workspace: "personal",
-      workspaceName,
-      visibility: "private",
-      content: {
-        type: "doc",
-        content: [
-          {
-            type: "heading",
-            attrs: {
-              level: 1,
-            },
-            content: [
-              {
-                type: "text",
-                text: seeds.roadmapTitle,
-              },
-            ],
-          },
-          {
-            type: "paragraph",
-            content: [
-              {
-                type: "text",
-                text: seeds.roadmapBody,
-              },
-            ],
-          },
-        ],
-      },
-    }
-
-    const planningPlainText = seeds.planningPlainText
-    const planningNote: NoteDocument = {
-      id: randomUUID(),
-      parentId: roadmapNote.id,
-      title: seeds.planningTitle,
-      preview: buildPreview(planningPlainText, this.locale),
-      plainText: planningPlainText,
-      createdAt: now,
-      updatedAt: now,
-      wordCount: countWords(planningPlainText),
-      isPinned: false,
-      status: "active",
-      tags: seeds.planningTags,
-      workspace: "personal",
-      workspaceName,
-      visibility: "private",
-      content: {
-        type: "doc",
-        content: [
-          {
-            type: "heading",
-            attrs: {
-              level: 1,
-            },
-            content: [
-              {
-                type: "text",
-                text: seeds.planningTitle,
-              },
-            ],
-          },
-          {
-            type: "paragraph",
-            content: [
-              {
-                type: "text",
-                text: seeds.planningBody,
-              },
-            ],
-          },
-        ],
-      },
-    }
-
-    await this.writeContent(welcomeNote.id, welcomeNote.content)
-    await this.writeContent(roadmapNote.id, roadmapNote.content)
-    await this.writeContent(planningNote.id, planningNote.content)
-    await this.writeIndex([this.toSummary(welcomeNote), this.toSummary(roadmapNote), this.toSummary(planningNote)])
   }
 
   private async readContent(id: string): Promise<JSONContent> {
@@ -495,6 +392,7 @@ export class NoteStore {
       updatedAt,
       wordCount: note.wordCount ?? countWords(plainText),
       isPinned: note.isPinned ?? false,
+      isFavorite: note.isFavorite ?? false,
       status: note.status ?? "active",
       tags: normalizeTags(note.tags ?? []),
       workspace,
@@ -504,16 +402,39 @@ export class NoteStore {
   }
 
   private async readIndex() {
-    const raw = await readFile(this.indexPath, "utf-8")
-    const payload = JSON.parse(raw) as { version?: number; notes?: StoredSummary[] }
-    const normalized = (payload.notes ?? []).map((note) => this.normalizeSummary(note))
-    const sanitized = this.sanitizeHierarchy(normalized)
+    let raw: string
 
-    if (payload.version !== 4 || this.hasHierarchyChanges(normalized, sanitized)) {
-      await this.writeIndex(sanitized)
+    try {
+      raw = await readFile(this.indexPath, "utf-8")
+    } catch (error) {
+      if (!this.isMissingFileError(error)) {
+        throw error
+      }
+
+      console.warn("[metis-note] index.json is missing and will be rebuilt from items.")
+      return this.sortNotes(await rebuildIndexFromItems(this.baseDir, this.locale))
     }
 
-    return this.sortNotes(sanitized)
+    const payload = JSON.parse(raw) as { version?: number; notes?: StoredSummary[] }
+
+    if ((payload.notes?.length ?? 0) === 0 && await this.hasAnyItemFiles()) {
+      console.warn("[metis-note] index.json is empty while note item files exist and will be rebuilt.")
+      return this.sortNotes(await rebuildIndexFromItems(this.baseDir, this.locale))
+    }
+
+    const normalized = (payload.notes ?? []).map((note) => this.normalizeSummary(note))
+    const sanitized = this.sanitizeHierarchy(normalized)
+    const existing = await this.filterExistingNotes(sanitized)
+
+    if (
+      payload.version !== 4 ||
+      this.hasHierarchyChanges(normalized, sanitized) ||
+      existing.length !== sanitized.length
+    ) {
+      await this.writeIndex(existing)
+    }
+
+    return this.sortNotes(existing)
   }
 
   private async writeIndex(notes: NoteSummary[]) {
@@ -529,6 +450,18 @@ export class NoteStore {
     return path.join(this.notesDir, `${id}.json`)
   }
 
+  private async readContentIfExists(id: string): Promise<JSONContent | null> {
+    try {
+      return await this.readContent(id)
+    } catch (error) {
+      if (!this.isMissingFileError(error)) {
+        throw error
+      }
+
+      return null
+    }
+  }
+
   private toSummary(note: NoteDocument): NoteSummary {
     return {
       id: note.id,
@@ -540,6 +473,7 @@ export class NoteStore {
       updatedAt: note.updatedAt,
       wordCount: note.wordCount,
       isPinned: note.isPinned,
+      isFavorite: note.isFavorite,
       status: note.status,
       tags: note.tags,
       workspace: note.workspace,
@@ -561,6 +495,51 @@ export class NoteStore {
 
   private hasHierarchyChanges(current: NoteSummary[], next: NoteSummary[]) {
     return current.some((note, index) => note.parentId !== next[index]?.parentId)
+  }
+
+  private async filterExistingNotes(notes: NoteSummary[]) {
+    const existing = (
+      await Promise.all(
+        notes.map(async (note) => {
+          try {
+            await stat(this.filePath(note.id))
+            return note
+          } catch (error) {
+            if (!this.isMissingFileError(error)) {
+              throw error
+            }
+
+            console.warn(`[metis-note] Removing orphaned note index entry with missing content file: ${note.id}`)
+            return null
+          }
+        }),
+      )
+    ).filter((note): note is NoteSummary => Boolean(note))
+
+    return this.sanitizeHierarchy(existing)
+  }
+
+  private async pruneMissingNotes(ids: string[]) {
+    const missingIds = new Set(ids)
+    const notes = await this.readIndex()
+    const nextNotes = notes.filter((note) => !missingIds.has(note.id))
+
+    if (nextNotes.length !== notes.length) {
+      await this.writeIndex(nextNotes)
+    }
+  }
+
+  private isMissingFileError(error: unknown) {
+    return error instanceof Error && "code" in error && error.code === "ENOENT"
+  }
+
+  private async hasAnyItemFiles() {
+    try {
+      const entries = await readdir(this.notesDir, { withFileTypes: true })
+      return entries.some((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    } catch {
+      return false
+    }
   }
 
   private resolveParentId(notes: NoteSummary[], noteId: string, parentId: string | null) {
@@ -640,5 +619,15 @@ export class NoteStore {
     }
 
     return ancestors
+  }
+
+  /**
+   * Reload all data from disk after sync has modified files.
+   * Re-reads index.json and rebuilds in-memory state.
+   */
+  async reloadFromDisk(): Promise<NoteSummary[]> {
+    const notes = await this.readIndex()
+    await this.syncLinkIndex()
+    return notes
   }
 }

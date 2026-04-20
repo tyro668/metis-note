@@ -14,6 +14,16 @@ import type { CreateNoteInput, NoteLinkResolutionMap, NoteSummary, UpdateNoteInp
 import type { SaveTemplateInput, TemplateDocument, TemplateSummary } from "../../src/shared/templates"
 import type { AppUpdateCheckResult, AppUpdateCurrentInfo, AppUpdateDownloadResult } from "../../src/shared/updates"
 import type { NoteVersionContent, VersionSummary } from "../../src/shared/versions"
+import type {
+  BaiduPanAuthResult,
+  ConflictResolution,
+  GoogleDriveAuthResult,
+  NoteSyncStateMap,
+  SyncConfig,
+  SyncConflict,
+  SyncResult,
+  SyncStatus,
+} from "../../src/shared/sync"
 
 function normalizeAssetPayload(payload: RendererAssetImportPayload) {
   return {
@@ -27,13 +37,23 @@ function normalizeAssetPayload(payload: RendererAssetImportPayload) {
   }
 }
 
+function withIpcSubscription<T>(channel: string, callback: (payload: T) => void) {
+  const handler = (_event: Electron.IpcRendererEvent, payload: T) => {
+    callback(payload)
+  }
+
+  ipcRenderer.on(channel, handler)
+
+  return () => {
+    ipcRenderer.removeListener(channel, handler)
+  }
+}
+
 contextBridge.exposeInMainWorld("metisNote", {
   notes: {
     list: () => ipcRenderer.invoke("notes:list"),
     get: (id: string) => ipcRenderer.invoke("notes:get", id),
     create: (payload?: CreateNoteInput) => ipcRenderer.invoke("notes:create", payload),
-    createFromTemplate: (templateId: string, payload?: CreateNoteInput) =>
-      ipcRenderer.invoke("notes:createFromTemplate", templateId, payload),
     update: (id: string, payload: UpdateNoteInput) => ipcRenderer.invoke("notes:update", id, payload),
     trash: (id: string) => ipcRenderer.invoke("notes:trash", id),
     restore: (id: string) => ipcRenderer.invoke("notes:restore", id),
@@ -124,5 +144,22 @@ contextBridge.exposeInMainWorld("metisNote", {
     check: () => ipcRenderer.invoke("updates:check") as Promise<AppUpdateCheckResult>,
     downloadLatest: () => ipcRenderer.invoke("updates:downloadLatest") as Promise<AppUpdateDownloadResult>,
     openReleasePage: (releasePageUrl?: string) => ipcRenderer.invoke("updates:openReleasePage", releasePageUrl) as Promise<void>,
+  },
+  sync: {
+    getStatus: () => ipcRenderer.invoke("sync:getStatus") as Promise<SyncStatus>,
+    getConfig: () => ipcRenderer.invoke("sync:getConfig") as Promise<SyncConfig | null>,
+    configure: (config: SyncConfig) => ipcRenderer.invoke("sync:configure", config) as Promise<void>,
+    authorizeBaiduPan: () => ipcRenderer.invoke("sync:authorizeBaiduPan") as Promise<BaiduPanAuthResult>,
+    authorizeGoogleDrive: (clientId: string) =>
+      ipcRenderer.invoke("sync:authorizeGoogleDrive", clientId) as Promise<GoogleDriveAuthResult>,
+    syncNow: () => ipcRenderer.invoke("sync:syncNow") as Promise<SyncResult>,
+    setPassphrase: (passphrase: string) => ipcRenderer.invoke("sync:setPassphrase", passphrase) as Promise<void>,
+    clearPassphrase: () => ipcRenderer.invoke("sync:clearPassphrase") as Promise<void>,
+    getPendingConflicts: () => ipcRenderer.invoke("sync:getPendingConflicts") as Promise<SyncConflict[]>,
+    getNoteSyncStates: () => ipcRenderer.invoke("sync:getNoteSyncStates") as Promise<NoteSyncStateMap>,
+    resolveConflict: (conflictId: string, resolution: ConflictResolution) =>
+      ipcRenderer.invoke("sync:resolveConflict", conflictId, resolution) as Promise<void>,
+    onStatusChanged: (callback: (status: SyncStatus) => void) => withIpcSubscription("sync:statusChanged", callback),
+    onSyncCompleted: (callback: (result: SyncResult) => void) => withIpcSubscription("sync:syncCompleted", callback),
   },
 })

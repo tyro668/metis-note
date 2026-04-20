@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject } from "react"
-import { ChevronDown, ChevronRight, Download, FileText, LayoutTemplate, ListTree, Plus, RotateCcw, Search, Star, Trash2 } from "lucide-react"
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react"
+import { AlertTriangle, ArrowDown, ArrowUp, Check, ChevronRight, Download, Ellipsis, FileText, Heart, ListTree, Loader2, Plus, RotateCcw, Search, Star, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useI18n } from "@/i18n/provider"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import type { NoteSummary, NoteView } from "@/shared/notes"
+import type { NoteSyncStateMap } from "@/shared/sync"
 
 interface NoteListProps {
   notes: NoteSummary[]
@@ -14,16 +16,19 @@ interface NoteListProps {
   activeView: NoteView
   isLoading: boolean
   noticeMessage: string | null
+  noteSyncStates: NoteSyncStateMap
   searchInputRef: RefObject<HTMLInputElement>
   onSearchChange: (value: string) => void
   onImportNote: () => void
   onCreateNote: () => void
-  onCreateFromTemplate: () => void
   onSelectNote: (id: string, mode: "preview" | "edit") => void
+  onDeselectNote: () => void
   onTogglePin: (id: string) => void
+  onToggleFavorite: (id: string) => void
   onMoveToTrash: (id: string) => void
   onRestoreNote: (id: string) => void
   onDeleteForever: (id: string) => void
+  onOpenConflicts: () => void
 }
 
 interface TreeNode {
@@ -95,29 +100,6 @@ function collectAncestorIds(notes: NoteSummary[], noteId: string | null) {
   return ancestors
 }
 
-function TreeNodeActionButton({
-  title,
-  className,
-  onClick,
-  children,
-}: {
-  title: string
-  className?: string
-  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      className={cn("rounded-md p-1.5 text-[#9aa2af] transition hover:bg-white hover:text-foreground dark:text-slate-500 dark:hover:bg-[#1e293b]", className)}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  )
-}
-
 export function NoteList({
   notes,
   selectedNoteId,
@@ -125,16 +107,19 @@ export function NoteList({
   activeView,
   isLoading,
   noticeMessage,
+  noteSyncStates,
   searchInputRef,
   onSearchChange,
   onImportNote,
   onCreateNote,
-  onCreateFromTemplate,
   onSelectNote,
+  onDeselectNote,
   onTogglePin,
+  onToggleFavorite,
   onMoveToTrash,
   onRestoreNote,
   onDeleteForever,
+  onOpenConflicts,
 }: NoteListProps) {
   const { messages } = useI18n()
   const emptyMessage =
@@ -144,15 +129,16 @@ export function NoteList({
         ? messages.tree.emptyTrash
         : messages.tree.emptyAll
   const tree = useMemo(() => buildNoteTree(notes, activeView), [notes, activeView])
-  const pinnedRoots = useMemo(() => (activeView === "all" ? tree.filter((node) => node.note.isPinned) : []), [activeView, tree])
-  const regularRoots = useMemo(
-    () => (activeView === "all" ? tree.filter((node) => !node.note.isPinned) : tree),
-    [activeView, tree],
-  )
+  const pinnedNodes = useMemo(() => {
+    if (activeView !== "all") return []
+    return notes
+      .filter((note) => note.isPinned)
+      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+      .map((note) => ({ note, children: [] as TreeNode[] }))
+  }, [activeView, notes])
+  const regularRoots = useMemo(() => tree, [tree])
   const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>({})
   const clickTimerRef = useRef<number | null>(null)
-  const [isImportMenuOpen, setIsImportMenuOpen] = useState(false)
-  const importMenuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const ancestorIds = collectAncestorIds(notes, selectedNoteId)
@@ -184,23 +170,6 @@ export function NoteList({
     }
   }, [])
 
-  useEffect(() => {
-    if (!isImportMenuOpen) {
-      return
-    }
-
-    function handlePointerDown(event: globalThis.MouseEvent) {
-      if (!(event.target instanceof Node) || importMenuRef.current?.contains(event.target)) {
-        return
-      }
-
-      setIsImportMenuOpen(false)
-    }
-
-    window.addEventListener("mousedown", handlePointerDown)
-    return () => window.removeEventListener("mousedown", handlePointerDown)
-  }, [isImportMenuOpen])
-
   function schedulePreviewOpen(id: string) {
     if (clickTimerRef.current !== null) {
       window.clearTimeout(clickTimerRef.current)
@@ -219,6 +188,79 @@ export function NoteList({
     }
 
     onSelectNote(id, "edit")
+  }
+
+  function renderDocIcon(noteId: string, isActive: boolean) {
+    const syncState = noteSyncStates[noteId]
+    const isSynced = !syncState || syncState === "synced"
+    const badgeColor = isSynced
+      ? ""
+      : syncState === "upload-pending"
+        ? "bg-amber-500"
+        : syncState === "download-pending"
+          ? "bg-sky-500"
+          : syncState === "conflict"
+            ? "bg-rose-500"
+            : "bg-sky-500"
+    const badgeIcon = isSynced ? (
+        <Check className="h-2.5 w-2.5 text-emerald-500" />
+      ) : syncState === "upload-pending" ? (
+        <ArrowUp className="h-2 w-2" />
+      ) : syncState === "download-pending" ? (
+        <ArrowDown className="h-2 w-2" />
+      ) : syncState === "conflict" ? (
+        <AlertTriangle className="h-2 w-2" />
+      ) : (
+        <Loader2 className="h-2 w-2 animate-spin" />
+      )
+    const label =
+      !syncState || syncState === "synced"
+        ? messages.tree.syncState.synced
+        : syncState === "upload-pending"
+          ? messages.tree.syncState.uploadPending
+          : syncState === "download-pending"
+            ? messages.tree.syncState.downloadPending
+            : syncState === "conflict"
+              ? messages.tree.syncState.conflict
+              : messages.tree.syncState.syncing
+
+    const iconWrapper = (
+      <span
+        title={label}
+        className={cn(
+          "relative inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+          isActive ? "bg-white text-[#4a7cff] dark:bg-[#0f172a]" : "text-[#9aa2af] dark:text-slate-500",
+        )}
+      >
+        <FileText className="h-3.5 w-3.5" />
+        {!isSynced && (
+          <span className={cn(
+            "absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full text-white ring-[1.5px] ring-white dark:ring-[#0b1220]",
+            badgeColor,
+          )}>
+            {badgeIcon}
+          </span>
+        )}
+      </span>
+    )
+
+    if (syncState === "conflict") {
+      return (
+        <button
+          type="button"
+          title={label}
+          className="shrink-0"
+          onClick={(event) => {
+            event.stopPropagation()
+            onOpenConflicts()
+          }}
+        >
+          {iconWrapper}
+        </button>
+      )
+    }
+
+    return iconWrapper
   }
 
   function renderNode(node: TreeNode, depth: number): ReactNode {
@@ -255,14 +297,7 @@ export function NoteList({
             )}
           </button>
 
-          <span
-            className={cn(
-              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
-              isActive ? "bg-white text-[#4a7cff] dark:bg-[#0f172a]" : "text-[#9aa2af] dark:text-slate-500",
-            )}
-          >
-            <FileText className="h-3.5 w-3.5" />
-          </span>
+          {renderDocIcon(node.note.id, isActive)}
 
           <button
             type="button"
@@ -276,47 +311,61 @@ export function NoteList({
             {node.note.title}
           </button>
 
-          <div className="flex shrink-0 items-center gap-1">
-            {node.note.status === "trashed" ? (
-              <>
-                <TreeNodeActionButton
-                  title={messages.tree.restoreTitle}
-                  className="opacity-70 hover:opacity-100"
-                  onClick={() => onRestoreNote(node.note.id)}
-                >
-                  <RotateCcw className="h-4 w-4" />
-                </TreeNodeActionButton>
-                <TreeNodeActionButton
-                  title={messages.tree.deleteForeverTitle}
-                  className="opacity-70 hover:opacity-100"
-                  onClick={() => onDeleteForever(node.note.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </TreeNodeActionButton>
-              </>
-            ) : (
-              <>
-                <TreeNodeActionButton
-                    title={node.note.isPinned ? messages.tree.unpinTitle : messages.tree.pinTitle}
-                    className={cn(
-                      node.note.isPinned
-                        ? "bg-[#fff6d8] text-[#e0ac12] dark:bg-[#3a2e10] dark:text-[#facc15]"
-                        : "opacity-0 group-hover:opacity-100",
-                    )}
-                  onClick={() => onTogglePin(node.note.id)}
-                >
-                  <Star className={cn("h-4 w-4", node.note.isPinned && "fill-current")} />
-                </TreeNodeActionButton>
-                <TreeNodeActionButton
-                  title={messages.tree.moveToTrashTitle}
-                  className="opacity-0 group-hover:opacity-100"
-                  onClick={() => onMoveToTrash(node.note.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </TreeNodeActionButton>
-              </>
-            )}
-          </div>
+          {node.note.isFavorite && (
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#f472b6] dark:text-[#f9a8d4]">
+              <Heart className="h-3 w-3 fill-current" />
+            </span>
+          )}
+
+          {node.note.isPinned && (
+            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#e0ac12] dark:text-[#facc15]">
+              <Star className="h-3 w-3 fill-current" />
+            </span>
+          )}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#9aa2af] transition hover:bg-white hover:text-foreground dark:text-slate-500 dark:hover:bg-[#1e293b]",
+                  "opacity-0 group-hover:opacity-100",
+                )}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Ellipsis className="h-4 w-4" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40">
+              {node.note.status === "trashed" ? (
+                <>
+                  <DropdownMenuItem onClick={() => onRestoreNote(node.note.id)}>
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    {messages.tree.restoreTitle}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDeleteForever(node.note.id)}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {messages.tree.deleteForeverTitle}
+                  </DropdownMenuItem>
+                </>
+              ) : (
+                <>
+                  <DropdownMenuItem onClick={() => onTogglePin(node.note.id)}>
+                    <Star className={cn("mr-2 h-4 w-4", node.note.isPinned && "fill-current")} />
+                    {node.note.isPinned ? messages.tree.unpinTitle : messages.tree.pinTitle}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onToggleFavorite(node.note.id)}>
+                    <Heart className={cn("mr-2 h-4 w-4", node.note.isFavorite && "fill-current")} />
+                    {node.note.isFavorite ? messages.tree.unfavoriteTitle : messages.tree.favoriteTitle}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onMoveToTrash(node.note.id)}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {messages.tree.moveToTrashTitle}
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {!isCollapsed && hasChildren ? <div>{node.children.map((child) => renderNode(child, depth + 1))}</div> : null}
@@ -331,10 +380,19 @@ export function NoteList({
 
     return (
       <section className="space-y-1.5">
-        <div className="flex items-center gap-2 px-3 text-[12px] font-medium text-[#8d95a2] dark:text-slate-500">
+        <button
+          type="button"
+          className={cn(
+            "flex w-full items-center gap-2 rounded-md px-3 py-0.5 text-left text-[12px] font-medium transition",
+            selectedNoteId === null
+              ? "bg-[#eff4ff] text-[#1d4ed8] dark:bg-[#13233f] dark:text-[#8eb8ff]"
+              : "text-[#8d95a2] hover:bg-[#f8fafc] dark:text-slate-500 dark:hover:bg-[#111827]",
+          )}
+          onClick={onDeselectNote}
+        >
           <span className="inline-flex h-4 w-4 items-center justify-center">{icon}</span>
           <span>{title}</span>
-        </div>
+        </button>
         <div className="space-y-1">{nodes.map((node) => renderNode(node, 0))}</div>
       </section>
     )
@@ -352,44 +410,14 @@ export function NoteList({
               <Plus className="h-4 w-4" />
               {messages.tree.createButton}
             </Button>
-            <div className="relative" ref={importMenuRef}>
-              <Button
-                variant="outline"
-                className="h-9 rounded-lg border-[#e7ebf1] px-3 text-sm font-medium text-[#667085] shadow-none hover:bg-[#f6f8fb] dark:border-[#243041] dark:bg-[#0f172a] dark:text-slate-300 dark:hover:bg-[#111827]"
-                onClick={() => setIsImportMenuOpen((current) => !current)}
-              >
-                <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">{messages.tree.importMenuButton}</span>
-                <ChevronDown className={cn("h-4 w-4 transition", isImportMenuOpen && "rotate-180")} />
-              </Button>
-
-              {isImportMenuOpen ? (
-                <div className="absolute right-0 top-[calc(100%+0.45rem)] z-20 w-48 rounded-xl border border-[#e7ebf1] bg-white p-2 shadow-[0_18px_44px_rgba(15,23,42,0.12)] dark:border-[#243041] dark:bg-[#0f172a]">
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-[#344054] transition hover:bg-[#f6f8fb] dark:text-slate-200 dark:hover:bg-[#111827]"
-                    onClick={() => {
-                      setIsImportMenuOpen(false)
-                      onCreateFromTemplate()
-                    }}
-                  >
-                    <LayoutTemplate className="h-4 w-4 shrink-0" />
-                    <span>{messages.tree.createFromTemplateButton}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-[#344054] transition hover:bg-[#f6f8fb] dark:text-slate-200 dark:hover:bg-[#111827]"
-                    onClick={() => {
-                      setIsImportMenuOpen(false)
-                      onImportNote()
-                    }}
-                  >
-                    <Download className="h-4 w-4 shrink-0" />
-                    <span>{messages.tree.importButton}</span>
-                  </button>
-                </div>
-              ) : null}
-            </div>
+            <Button
+              variant="outline"
+              className="h-9 rounded-lg border-[#e7ebf1] px-3 text-sm font-medium text-[#667085] shadow-none hover:bg-[#f6f8fb] dark:border-[#243041] dark:bg-[#0f172a] dark:text-slate-300 dark:hover:bg-[#111827]"
+              onClick={onImportNote}
+            >
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">{messages.tree.importButton}</span>
+            </Button>
           </div>
 
           <div className="relative">
@@ -418,13 +446,13 @@ export function NoteList({
           <div className="space-y-4 px-3 py-4">
             {activeView === "all" ? (
               <>
-                {renderSection(messages.tree.pinnedTitle, <Star className="h-3.5 w-3.5" />, pinnedRoots)}
+                {renderSection(messages.tree.pinnedTitle, <Star className="h-3.5 w-3.5" />, pinnedNodes)}
                 {renderSection(messages.tree.titleAll, <ListTree className="h-3.5 w-3.5" />, regularRoots)}
               </>
             ) : (
               renderSection(
                 activeView === "favorites" ? messages.tree.titleFavorites : activeView === "trash" ? messages.tree.titleTrash : messages.tree.titleAll,
-                activeView === "favorites" ? <Star className="h-3.5 w-3.5" /> : <ListTree className="h-3.5 w-3.5" />,
+                activeView === "favorites" ? <Heart className="h-3.5 w-3.5" /> : <ListTree className="h-3.5 w-3.5" />,
                 regularRoots,
               )
             )}

@@ -11,6 +11,7 @@ import { registerNoteLinkHandlers } from "./ipc/note-links"
 import { registerNoteHandlers } from "./ipc/notes"
 import { registerTemplateHandlers } from "./ipc/templates"
 import { registerVersionHandlers } from "./ipc/versions"
+import { registerSyncHandlers } from "./ipc/sync"
 import { AssetStore } from "./services/asset-store"
 import { AppUpdaterService } from "./services/app-updater"
 import { LlmInferenceService } from "./services/llm-inference"
@@ -20,8 +21,19 @@ import { NoteLinkStore } from "./services/note-link-store"
 import { NoteStore } from "./services/note-store"
 import { TemplateStore } from "./services/template-store"
 import { VersionStore } from "./services/version-store"
+import { SyncManager } from "./services/sync/sync-manager"
+import { BaiduPanAuthService } from "./services/sync/baidu-pan-auth"
+import { BaiduPanBrokerClient } from "./services/sync/baidu-pan-broker"
+import { GoogleDriveAuthService } from "./services/sync/google-drive-auth"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+if (process.platform === "darwin") {
+  // On macOS, Chromium's GPU process can become unstable while a local llama runtime
+  // is using Metal at the same time. Run the renderer without hardware acceleration
+  // so AI write does not take the whole window down.
+  app.disableHardwareAcceleration()
+}
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -146,7 +158,7 @@ async function bootstrap() {
     console.error("[metis-note] Failed to prune note versions.", error)
   })
   protocol.handle(ASSET_PROTOCOL, (request) => assetStore.handleProtocolRequest(request))
-  registerNoteHandlers(store, assetStore, templateStore, locale)
+  registerNoteHandlers(store, assetStore, locale)
   registerNoteLinkHandlers(store, noteLinkStore)
   registerVersionHandlers(store, versionStore, locale)
   registerTemplateHandlers(templateStore, store, locale)
@@ -154,6 +166,12 @@ async function bootstrap() {
   registerAppUpdateHandlers(appUpdater)
   registerLlmModelHandlers(llmModelStore, localModelManager)
   registerLlmInferenceHandlers(llmInference)
+  const baiduPanBrokerClient = new BaiduPanBrokerClient()
+  const googleDriveAuthService = new GoogleDriveAuthService()
+  const syncManager = new SyncManager(notesBaseDir, baiduPanBrokerClient, googleDriveAuthService)
+  const baiduPanAuthService = new BaiduPanAuthService(baiduPanBrokerClient)
+  await syncManager.initialize()
+  registerSyncHandlers(syncManager, store, baiduPanAuthService, googleDriveAuthService)
   await createMainWindow()
 
   app.on("activate", async () => {

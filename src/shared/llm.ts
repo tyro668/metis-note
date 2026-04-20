@@ -40,6 +40,14 @@ interface LocalModelCatalogPayload {
   initialDownloads: ManagedLocalModelCatalogEntry[]
 }
 
+interface ManagedLocalModelCatalogDownloadSourceEntry {
+  id?: string
+  label?: string
+  communityLabel?: string
+  pageUrl?: string
+  downloadUrl?: string
+}
+
 interface ManagedLocalModelCatalogEntry {
   id: string
   displayName: string
@@ -57,6 +65,7 @@ interface ManagedLocalModelCatalogEntry {
   repositoryPage: string
   filename: string
   downloadUrl: string
+  downloadSources?: ManagedLocalModelCatalogDownloadSourceEntry[]
   license: string
   contextLength: number
   estimatedDownloadSizeGiB: number
@@ -64,6 +73,14 @@ interface ManagedLocalModelCatalogEntry {
   verifiedAt: string
   fallbackRepositories?: string[]
   notes?: string[]
+}
+
+export interface ManagedLocalModelDownloadSource {
+  id: string
+  label: string
+  communityLabel: string | null
+  pageUrl: string
+  downloadUrl: string
 }
 
 export interface ManagedLocalModelDefinition {
@@ -83,6 +100,7 @@ export interface ManagedLocalModelDefinition {
   repositoryPage: string
   filename: string
   downloadUrl: string
+  downloadSources: ManagedLocalModelDownloadSource[]
   license: string
   contextLength: number
   estimatedDownloadSizeGiB: number
@@ -264,6 +282,7 @@ const managedLocalModelDefinitions = (Array.isArray(localModelCatalogPayload.ini
   repositoryPage: entry.repositoryPage,
   filename: entry.filename,
   downloadUrl: entry.downloadUrl,
+  downloadSources: normalizeManagedLocalDownloadSources(entry),
   license: entry.license,
   contextLength: entry.contextLength,
   estimatedDownloadSizeGiB: entry.estimatedDownloadSizeGiB,
@@ -470,4 +489,79 @@ export function getLegacyProviderDefault(providerId: string) {
 
 function normalizeProtocol(rawProtocol: string | null | undefined): LlmProtocolId {
   return rawProtocol === "anthropic-compatible" || rawProtocol === "anthropic" ? "anthropic" : "openai"
+}
+
+function getManagedLocalDownloadSourcePriority(source: ManagedLocalModelDownloadSource) {
+  const haystack = [
+    source.id,
+    source.label,
+    source.communityLabel ?? "",
+    source.pageUrl,
+    source.downloadUrl,
+  ]
+    .join(" ")
+    .toLowerCase()
+
+  if (
+    haystack.includes("hf-mirror") ||
+    haystack.includes("hf mirror") ||
+    haystack.includes("modelscope") ||
+    haystack.includes("openxlab") ||
+    haystack.includes("mirror") ||
+    haystack.includes("国内")
+  ) {
+    return 0
+  }
+
+  if (haystack.includes("huggingface")) {
+    return 1
+  }
+
+  return 2
+}
+
+function normalizeManagedLocalDownloadSources(entry: ManagedLocalModelCatalogEntry): ManagedLocalModelDownloadSource[] {
+  const sources = Array.isArray(entry.downloadSources) ? entry.downloadSources : []
+  const normalized = sources
+    .map<ManagedLocalModelDownloadSource | null>((source, index) => {
+      const pageUrl = typeof source.pageUrl === "string" ? source.pageUrl.trim() : ""
+      const downloadUrl = typeof source.downloadUrl === "string" ? source.downloadUrl.trim() : ""
+
+      if (!pageUrl || !downloadUrl) {
+        return null
+      }
+
+      return {
+        id: typeof source.id === "string" && source.id.trim() ? source.id.trim() : `source-${index + 1}`,
+        label: typeof source.label === "string" && source.label.trim() ? source.label.trim() : `Source ${index + 1}`,
+        communityLabel:
+          typeof source.communityLabel === "string" && source.communityLabel.trim() ? source.communityLabel.trim() : null,
+        pageUrl,
+        downloadUrl,
+      }
+    })
+    .filter((source): source is ManagedLocalModelDownloadSource => Boolean(source))
+    .sort((left, right) => {
+      const priorityDiff = getManagedLocalDownloadSourcePriority(left) - getManagedLocalDownloadSourcePriority(right)
+
+      if (priorityDiff !== 0) {
+        return priorityDiff
+      }
+
+      return left.label.localeCompare(right.label, "en")
+    })
+
+  if (normalized.length > 0) {
+    return normalized
+  }
+
+  return [
+    {
+      id: "primary",
+      label: "Primary",
+      communityLabel: null,
+      pageUrl: entry.repositoryPage,
+      downloadUrl: entry.downloadUrl,
+    },
+  ]
 }

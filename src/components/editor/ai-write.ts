@@ -41,13 +41,22 @@ export function getAiWriteSystemPrompt(locale: AppLocale) {
 }
 
 export function buildAiWriteUserPrompt(locale: AppLocale, context: AiWriteContext) {
+  return buildAiWriteUserPromptWithInstruction(locale, context, "")
+}
+
+export function buildAiWriteUserPromptWithInstruction(locale: AppLocale, context: AiWriteContext, instruction: string) {
+  const normalizedInstruction = instruction.trim()
+
   if (locale === "en") {
     return `Document title: ${context.title}
 
 Existing content:
 ${context.contextBefore}
 
-[Continue writing from here]`
+User request:
+${normalizedInstruction || "Continue writing naturally from here."}
+
+[Write the requested content from here]`
   }
 
   return `文档标题：${context.title}
@@ -55,7 +64,10 @@ ${context.contextBefore}
 已有内容：
 ${context.contextBefore}
 
-[请从这里续写]`
+用户要求：
+${normalizedInstruction || "请从这里自然续写。"}
+
+[请根据要求从这里继续写作]`
 }
 
 export function buildAiWriteInsertContent(text: string): JSONContent[] {

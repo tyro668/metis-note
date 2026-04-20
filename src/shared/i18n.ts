@@ -1,3 +1,9 @@
+import {
+  DEFAULT_BAIDU_PAN_AUTH_BROKER_URL,
+  DEFAULT_BAIDU_PAN_REMOTE_PATH,
+  DEFAULT_GOOGLE_DRIVE_REMOTE_PATH,
+} from "./sync"
+
 export const APP_NAME = "MetisNote"
 export const SUPPORTED_LOCALES = ["zh-CN", "en"] as const
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number]
@@ -20,6 +26,7 @@ export interface AppMessages {
       security: string
       intelligence: string
       templates: string
+      sync: string
     }
     general: {
       title: string
@@ -135,6 +142,7 @@ export interface AppMessages {
         deleted: (identifier: string) => string
         testSucceeded: (identifier: string) => string
         localInstalled: (identifier: string) => string
+        localRetryStarted: (identifier: string) => string
         localDeleted: (identifier: string) => string
       }
       errors: {
@@ -164,8 +172,10 @@ export interface AppMessages {
         installedTitle: string
         installedDescription: string
         queueTitle: string
+        queueDescription: string
         queueEmpty: string
         queuePreparing: (title: string) => string
+        progressLabel: string
         runtimeTitle: string
         runtimeIdleTitle: string
         runtimeIdleDescription: string
@@ -176,8 +186,10 @@ export interface AppMessages {
         qualityBalanced: string
         qualityHigherQuality: string
         downloadSizeLabel: string
+        downloadSourcesTitle: string
         memoryLabel: string
         addAndDownloadButton: string
+        retryDownloadButton: string
         useNowButton: string
         inUseButton: string
         installedEmptyTitle: string
@@ -261,7 +273,16 @@ export interface AppMessages {
     deleteForeverTitle: string
     pinTitle: string
     unpinTitle: string
+    favoriteTitle: string
+    unfavoriteTitle: string
     moveToTrashTitle: string
+    syncState: {
+      synced: string
+      uploadPending: string
+      downloadPending: string
+      conflict: string
+      syncing: string
+    }
   }
   editor: {
     unsaved: string
@@ -335,6 +356,33 @@ export interface AppMessages {
       blockquote: string
       horizontalRule: string
     }
+    tablePicker: {
+      title: string
+      description: string
+      selectedSize: (rows: number, cols: number) => string
+      cancel: string
+    }
+    tableControls: {
+      title: string
+      columnMenu: string
+      rowMenu: string
+      cellMenu: string
+      headerMenu: string
+      dangerMenu: string
+      insertColumnBefore: string
+      insertColumnAfter: string
+      deleteColumn: string
+      enableIndexColumn: string
+      disableIndexColumn: string
+      insertRowAbove: string
+      insertRowBelow: string
+      deleteRow: string
+      mergeCells: string
+      splitCell: string
+      toggleHeaderRow: string
+      toggleHeaderColumn: string
+      deleteTable: string
+    }
     commandGroups: {
       ai: string
       links: string
@@ -374,8 +422,14 @@ export interface AppMessages {
       slashLabel: string
       slashDescription: string
       disabledHint: string
+      promptTitle: string
+      promptDescription: string
+      promptPlaceholder: string
+      promptShortcutHint: string
+      promptRequiredError: string
       thinking: string
       writing: string
+      generateButton: string
       confirmButton: string
       cancelButton: string
       retryButton: string
@@ -475,6 +529,8 @@ export interface AppMessages {
     printStarted: string
     pinned: string
     unpinned: string
+    favorited: string
+    unfavorited: string
   }
   errors: {
     loadNoteListFailed: string
@@ -491,7 +547,119 @@ export interface AppMessages {
     deleteForeverFailed: string
     printFailed: string
     toggleFavoriteFailed: string
+    togglePinFailed: string
     noteNotFound: (id: string) => string
+  }
+  sync: {
+    title: string
+    description: string
+    status: {
+      idle: string
+      syncing: string
+      error: string
+      conflict: string
+      disabled: string
+      notConfigured: string
+    }
+    phase: {
+      scanning: string
+      comparing: string
+      uploading: string
+      downloading: string
+      merging: string
+      finalizing: string
+    }
+    provider: {
+      s3: string
+      baiduPan: string
+      googleDrive: string
+      webdav: string
+    }
+    providerLabel: string
+    providerHint: string
+    enabledDescription: string
+    groups: {
+      connection: string
+      credentials: string
+      syncSpace: string
+      authorization: string
+      oauthConfig: string
+    }
+    s3: {
+      description: string
+      endpointLabel: string
+      endpointPlaceholder: string
+      regionLabel: string
+      bucketLabel: string
+      prefixLabel: string
+      accessKeyIdLabel: string
+      secretAccessKeyLabel: string
+    }
+    baiduPan: {
+      description: string
+      remotePathLabel: string
+      accountLabel: string
+      directoryDescription: string
+      authTitle: string
+      authDescription: string
+      authorizeAction: string
+      reauthorizeAction: string
+      authorizingAction: string
+      authorizedStatus: string
+      unauthorizedStatus: string
+      brokerUnavailableError: string
+      authorizationRequiredError: string
+    }
+    googleDrive: {
+      description: string
+      clientIdLabel: string
+      clientIdPlaceholder: string
+      remotePathLabel: string
+      accountLabel: string
+      directoryDescription: string
+      authTitle: string
+      authDescription: string
+      authorizeAction: string
+      reauthorizeAction: string
+      authorizingAction: string
+      authorizedStatus: string
+      unauthorizedStatus: string
+      clientIdRequiredError: string
+      authorizationRequiredError: string
+    }
+    webdav: {
+      description: string
+      serverUrlLabel: string
+      serverUrlPlaceholder: string
+      usernameLabel: string
+      usernamePlaceholder: string
+      passwordLabel: string
+      passwordPlaceholder: string
+      remotePathLabel: string
+    }
+    actions: {
+      syncNow: string
+      save: string
+      enable: string
+      disable: string
+    }
+    conflict: {
+      title: string
+      keepLocal: string
+      keepCloud: string
+      keepBoth: string
+    }
+    encryption: {
+      title: string
+      description: string
+      passphraseLabel: string
+      passphrasePlaceholder: string
+    }
+    result: {
+      pushed: (count: number) => string
+      pulled: (count: number) => string
+      conflicts: (count: number) => string
+    }
   }
 }
 
@@ -513,6 +681,7 @@ const messages = {
         security: "安全设置",
         intelligence: "智能设置",
         templates: "模板",
+        sync: "多设备同步",
       },
       general: {
         title: "通用设置",
@@ -628,6 +797,7 @@ const messages = {
           deleted: (identifier) => `已删除模型：${identifier}`,
           testSucceeded: (identifier) => `模型连接测试成功：${identifier}`,
           localInstalled: (identifier) => `已添加本地模型：${identifier}`,
+          localRetryStarted: (identifier) => `已重新开始下载本地模型：${identifier}`,
           localDeleted: (identifier) => `已移除本地模型：${identifier}`,
         },
         errors: {
@@ -657,8 +827,10 @@ const messages = {
           installedTitle: "已安装模型",
           installedDescription: "这里集中展示当前设备上已经纳入托管的本地模型，并支持一键切换使用。",
           queueTitle: "下载队列",
+          queueDescription: "首次添加本地模型后，下载和准备进度会持续显示在这里，不需要再次打开弹窗。",
           queueEmpty: "当前没有本地模型任务。开始添加模型后，下载与准备进度会显示在这里。",
           queuePreparing: (title) => `正在准备 ${title} 的托管配置与下载任务。`,
+          progressLabel: "下载进度",
           runtimeTitle: "运行状态",
           runtimeIdleTitle: "尚未启用本地模型",
           runtimeIdleDescription: "选择一个推荐模型并点击“添加并下载”，后续本地模型将由应用统一托管。",
@@ -669,8 +841,10 @@ const messages = {
           qualityBalanced: "均衡体验，适合大多数设备",
           qualityHigherQuality: "更高质量，适合资源更充足的设备",
           downloadSizeLabel: "预计下载",
+          downloadSourcesTitle: "下载地址",
           memoryLabel: "预计内存",
           addAndDownloadButton: "添加并下载",
+          retryDownloadButton: "重新下载",
           useNowButton: "立即使用",
           inUseButton: "使用中",
           installedEmptyTitle: "还没有已安装的本地模型",
@@ -740,7 +914,7 @@ const messages = {
       titleTrash: "回收站",
       pinnedTitle: "置顶",
       emptyAll: "还没有文档，点击右上角创建第一篇。",
-      emptyFavorites: "还没有收藏内容，点击文档节点右侧的星标可以快速加入收藏。",
+      emptyFavorites: "还没有收藏内容，可通过文档节点右侧的菜单加入收藏。",
       emptyTrash: "回收站暂时为空。",
       loading: "正在载入文档树...",
       noResults: "没有找到匹配的文档。",
@@ -754,7 +928,16 @@ const messages = {
       deleteForeverTitle: "彻底删除",
       pinTitle: "置顶",
       unpinTitle: "取消置顶",
+      favoriteTitle: "收藏",
+      unfavoriteTitle: "取消收藏",
       moveToTrashTitle: "移入回收站",
+      syncState: {
+        synced: "已同步",
+        uploadPending: "待上传到存储端",
+        downloadPending: "待从存储端下载",
+        conflict: "存在冲突",
+        syncing: "同步中…",
+      },
     },
     editor: {
       unsaved: "未保存",
@@ -818,7 +1001,7 @@ const messages = {
         heading2: "插入或切换为二级标题",
         heading3: "插入或切换为三级标题",
         taskList: "插入带复选框的任务列表",
-        table: "插入一个 3 x 3 表格",
+        table: "选择行列后插入可编辑表格",
         image: "选择并插入一张图片",
         file: "选择并插入一个附件文件",
         details: "插入可折叠的内容块",
@@ -827,6 +1010,33 @@ const messages = {
         codeBlock: "插入带语法高亮的代码块",
         blockquote: "插入引用块",
         horizontalRule: "插入内容分割线",
+      },
+      tablePicker: {
+        title: "插入表格",
+        description: "移动鼠标选择表格的行列数，点击即可插入。",
+        selectedSize: (rows, cols) => `${rows} 行 × ${cols} 列`,
+        cancel: "取消",
+      },
+      tableControls: {
+        title: "表格编辑",
+        columnMenu: "列",
+        rowMenu: "行",
+        cellMenu: "单元格",
+        headerMenu: "表头",
+        dangerMenu: "删除",
+        insertColumnBefore: "左侧插入列",
+        insertColumnAfter: "右侧插入列",
+        deleteColumn: "删除当前列",
+        enableIndexColumn: "启用首列序号",
+        disableIndexColumn: "关闭首列序号",
+        insertRowAbove: "上方插入行",
+        insertRowBelow: "下方添加行",
+        deleteRow: "删除当前行",
+        mergeCells: "合并单元格",
+        splitCell: "拆分单元格",
+        toggleHeaderRow: "切换表头行",
+        toggleHeaderColumn: "切换表头列",
+        deleteTable: "删除表格",
       },
       commandGroups: {
         ai: "AI",
@@ -867,8 +1077,14 @@ const messages = {
         slashLabel: "AI 帮写",
         slashDescription: "AI 根据当前文档上下文继续写作",
         disabledHint: "请先在设置 > 智能设置中配置并启用一个模型",
+        promptTitle: "告诉 AI 要写什么",
+        promptDescription: "先描述希望 AI 帮你写的具体内容、角度或结构，再开始生成。",
+        promptPlaceholder: "例如：补充一段会议结论，强调风险、下一步安排，并保持正式简洁。",
+        promptShortcutHint: "按 Cmd/Ctrl + Enter 开始生成",
+        promptRequiredError: "请先输入希望 AI 帮写的具体内容",
         thinking: "正在思考…",
         writing: "正在写作…",
+        generateButton: "开始生成",
         confirmButton: "确认插入",
         cancelButton: "取消",
         retryButton: "重试",
@@ -967,8 +1183,10 @@ const messages = {
       templateSaved: (title) => `已保存模板：${title}`,
       versionRestored: (title) => `已恢复历史版本：${title}`,
       printStarted: "已打开打印对话框",
-      pinned: "已加入收藏",
-      unpinned: "已取消收藏",
+      pinned: "已置顶",
+      unpinned: "已取消置顶",
+      favorited: "已加入收藏",
+      unfavorited: "已取消收藏",
     },
     errors: {
       loadNoteListFailed: "加载文档列表失败",
@@ -985,7 +1203,119 @@ const messages = {
       deleteForeverFailed: "彻底删除失败",
       printFailed: "打印失败",
       toggleFavoriteFailed: "收藏操作失败",
+      togglePinFailed: "置顶操作失败",
       noteNotFound: (id) => `未找到文档：${id}`,
+    },
+    sync: {
+      title: "多设备同步",
+      description: "通过云存储在多台设备之间同步备忘录数据。",
+      status: {
+        idle: "已同步",
+        syncing: "同步中…",
+        error: "同步出错",
+        conflict: "存在冲突",
+        disabled: "同步已关闭",
+        notConfigured: "未配置同步",
+      },
+      phase: {
+        scanning: "扫描本地文件…",
+        comparing: "比较文件变更…",
+        uploading: "上传变更…",
+        downloading: "下载变更…",
+        merging: "合并数据…",
+        finalizing: "完成同步…",
+      },
+      provider: {
+        s3: "S3 兼容存储",
+        baiduPan: "百度网盘",
+        googleDrive: "Google Drive",
+        webdav: "WebDAV",
+      },
+      providerLabel: "存储类型",
+      providerHint: "选择一种同步方式，下面会显示对应的连接与认证配置。",
+      enabledDescription: "开启后，当前设备会按照所选方式与其他设备同步数据。",
+      groups: {
+        connection: "连接信息",
+        credentials: "认证信息",
+        syncSpace: "同步空间",
+        authorization: "授权信息",
+        oauthConfig: "OAuth 配置",
+      },
+      s3: {
+        description: "适用于 AWS S3、Cloudflare R2、MinIO 等兼容 S3 接口的对象存储。",
+        endpointLabel: "Endpoint",
+        endpointPlaceholder: "https://s3.amazonaws.com",
+        regionLabel: "Region",
+        bucketLabel: "Bucket",
+        prefixLabel: "Prefix",
+        accessKeyIdLabel: "Access Key ID",
+        secretAccessKeyLabel: "Secret Access Key",
+      },
+      baiduPan: {
+        description: "适用于百度网盘应用目录同步，通过授权代理完成网页登录。",
+        remotePathLabel: "远程路径",
+        accountLabel: "已授权账号",
+        directoryDescription: `同步目录固定为 ${DEFAULT_BAIDU_PAN_REMOTE_PATH}。`,
+        authTitle: "网页授权",
+        authDescription: `点击下方按钮跳转到百度网盘网页端完成登录和授权，成功后会自动返回应用。授权代理服务默认地址为 ${DEFAULT_BAIDU_PAN_AUTH_BROKER_URL}。`,
+        authorizeAction: "打开网页授权",
+        reauthorizeAction: "重新授权",
+        authorizingAction: "等待网页授权…",
+        authorizedStatus: "已授权",
+        unauthorizedStatus: "未授权",
+        brokerUnavailableError: "百度网盘授权代理不可用，请先启动授权代理服务。",
+        authorizationRequiredError: "请先完成百度网盘网页授权。",
+      },
+      googleDrive: {
+        description: "适用于 Google Drive 隐藏 appDataFolder，同步时使用桌面端 PKCE 网页授权。",
+        clientIdLabel: "OAuth Client ID",
+        clientIdPlaceholder: "请输入 Google 桌面应用客户端 ID",
+        remotePathLabel: "同步空间",
+        accountLabel: "已授权账号",
+        directoryDescription: `同步数据保存在 Google Drive appDataFolder 的 ${DEFAULT_GOOGLE_DRIVE_REMOTE_PATH} 命名空间中。`,
+        authTitle: "PKCE 网页授权",
+        authDescription: "请先在 Google Cloud Console 中启用 Drive API，并创建“桌面应用”类型的 OAuth Client。点击下方按钮后，应用会在系统浏览器中完成登录与 PKCE 授权。",
+        authorizeAction: "打开 Google 授权",
+        reauthorizeAction: "重新授权",
+        authorizingAction: "等待 Google 授权…",
+        authorizedStatus: "已授权",
+        unauthorizedStatus: "未授权",
+        clientIdRequiredError: "请先填写 Google Drive 的 OAuth Client ID。",
+        authorizationRequiredError: "请先完成 Google Drive 授权。",
+      },
+      webdav: {
+        description: "适用于坚果云、Nextcloud、群晖等支持 WebDAV 的云盘或私有存储。",
+        serverUrlLabel: "服务器地址",
+        serverUrlPlaceholder: "https://dav.example.com",
+        usernameLabel: "用户名",
+        usernamePlaceholder: "请输入用户名",
+        passwordLabel: "密码",
+        passwordPlaceholder: "请输入密码",
+        remotePathLabel: "远程路径",
+      },
+      actions: {
+        syncNow: "立即同步",
+        save: "保存",
+        enable: "启用同步",
+        disable: "关闭同步",
+      },
+      conflict: {
+        title: "文件冲突",
+        keepLocal: "保留本地版本",
+        keepCloud: "保留云端版本",
+        keepBoth: "保留两份",
+      },
+      encryption: {
+        title: "端到端加密",
+        description: "设置密码短语，对同步数据进行端到端加密。",
+        passphraseLabel: "加密密码",
+        passphrasePlaceholder: "输入加密密码…",
+      },
+      result: {
+        pushed: (count) => `上传 ${count} 篇文档`,
+        pulled: (count) => `下载 ${count} 篇文档`,
+        conflicts: (count) => `${count} 个冲突`,
+      },
     },
   },
   en: {
@@ -1005,6 +1335,7 @@ const messages = {
         security: "Security",
         intelligence: "Intelligence",
         templates: "Templates",
+        sync: "Multi-device Sync",
       },
     general: {
       title: "General Settings",
@@ -1120,6 +1451,7 @@ const messages = {
           deleted: (identifier) => `Deleted model: ${identifier}`,
           testSucceeded: (identifier) => `Connection test succeeded: ${identifier}`,
           localInstalled: (identifier) => `Added local model: ${identifier}`,
+          localRetryStarted: (identifier) => `Restarted local model download: ${identifier}`,
           localDeleted: (identifier) => `Removed local model: ${identifier}`,
         },
         errors: {
@@ -1149,8 +1481,10 @@ const messages = {
           installedTitle: "Installed Models",
           installedDescription: "This area lists the local models already managed on the current device and lets you switch between them quickly.",
           queueTitle: "Download Queue",
+          queueDescription: "After you add a local model for the first time, its download and preparation progress will stay visible here without reopening the dialog.",
           queueEmpty: "There are no local model tasks right now. Once you add a model, its preparation and download progress will appear here.",
           queuePreparing: (title) => `Preparing the managed setup and download task for ${title}.`,
+          progressLabel: "Download Progress",
           runtimeTitle: "Runtime Status",
           runtimeIdleTitle: "No local model is active yet",
           runtimeIdleDescription: "Choose a recommended model and click Add & Download. The app will take over the rest of the local setup flow.",
@@ -1161,8 +1495,10 @@ const messages = {
           qualityBalanced: "Balanced for most devices",
           qualityHigherQuality: "Higher quality for devices with more resources",
           downloadSizeLabel: "Download",
+          downloadSourcesTitle: "Download Sources",
           memoryLabel: "Memory",
           addAndDownloadButton: "Add & Download",
+          retryDownloadButton: "Retry Download",
           useNowButton: "Use Now",
           inUseButton: "In Use",
           installedEmptyTitle: "No local models installed yet",
@@ -1232,7 +1568,7 @@ const messages = {
       titleTrash: "Trash",
       pinnedTitle: "Pinned",
       emptyAll: "No documents yet. Create your first one from the top right.",
-      emptyFavorites: "No favorites yet. Click the star on a document node to add it to favorites.",
+      emptyFavorites: "No favorites yet. Use the menu on a document node to add it to favorites.",
       emptyTrash: "Trash is empty.",
       loading: "Loading document tree...",
       noResults: "No matching documents found.",
@@ -1246,7 +1582,16 @@ const messages = {
       deleteForeverTitle: "Delete permanently",
       pinTitle: "Pin",
       unpinTitle: "Unpin",
+      favoriteTitle: "Favorite",
+      unfavoriteTitle: "Remove from favorites",
       moveToTrashTitle: "Move to trash",
+      syncState: {
+        synced: "Synced",
+        uploadPending: "Pending upload",
+        downloadPending: "Pending download",
+        conflict: "Conflicts detected",
+        syncing: "Syncing…",
+      },
     },
     editor: {
       unsaved: "Unsaved",
@@ -1310,7 +1655,7 @@ const messages = {
         heading2: "Insert or switch to a level-2 heading",
         heading3: "Insert or switch to a level-3 heading",
         taskList: "Insert a checklist-style task list",
-        table: "Insert a 3 x 3 table",
+        table: "Choose the size before inserting an editable table",
         image: "Choose and insert an image",
         file: "Choose and insert an attachment",
         details: "Insert a collapsible details block",
@@ -1319,6 +1664,33 @@ const messages = {
         codeBlock: "Insert a syntax-highlighted code block",
         blockquote: "Insert a blockquote",
         horizontalRule: "Insert a divider line",
+      },
+      tablePicker: {
+        title: "Insert Table",
+        description: "Move over the grid to choose rows and columns, then click to insert.",
+        selectedSize: (rows, cols) => `${rows} rows × ${cols} columns`,
+        cancel: "Cancel",
+      },
+      tableControls: {
+        title: "Table Editing",
+        columnMenu: "Columns",
+        rowMenu: "Rows",
+        cellMenu: "Cells",
+        headerMenu: "Headers",
+        dangerMenu: "Delete",
+        insertColumnBefore: "Insert Column Left",
+        insertColumnAfter: "Insert Column Right",
+        deleteColumn: "Delete Current Column",
+        enableIndexColumn: "Use First Column as Index",
+        disableIndexColumn: "Disable First Column Index",
+        insertRowAbove: "Insert Row Above",
+        insertRowBelow: "Add Row Below",
+        deleteRow: "Delete Current Row",
+        mergeCells: "Merge Cells",
+        splitCell: "Split Cell",
+        toggleHeaderRow: "Toggle Header Row",
+        toggleHeaderColumn: "Toggle Header Column",
+        deleteTable: "Delete Table",
       },
       commandGroups: {
         ai: "AI",
@@ -1359,8 +1731,14 @@ const messages = {
         slashLabel: "AI Write",
         slashDescription: "Continue the document with AI using the current context",
         disabledHint: "Configure and enable a model first in Settings > Intelligence",
+        promptTitle: "Tell AI what to write",
+        promptDescription: "Describe the specific content, angle, or structure you want before generation starts.",
+        promptPlaceholder: "For example: write a concise meeting summary with risks, decisions, and next steps.",
+        promptShortcutHint: "Press Cmd/Ctrl + Enter to generate",
+        promptRequiredError: "Enter what you want AI to write first.",
         thinking: "Thinking…",
         writing: "Writing…",
+        generateButton: "Generate",
         confirmButton: "Insert",
         cancelButton: "Cancel",
         retryButton: "Retry",
@@ -1465,8 +1843,10 @@ const messages = {
       templateSaved: (title) => `Saved template: ${title}`,
       versionRestored: (title) => `Restored version for: ${title}`,
       printStarted: "Opened the print dialog",
-      pinned: "Added to favorites",
-      unpinned: "Removed from favorites",
+      pinned: "Pinned to top",
+      unpinned: "Unpinned",
+      favorited: "Added to favorites",
+      unfavorited: "Removed from favorites",
     },
     errors: {
       loadNoteListFailed: "Failed to load document list",
@@ -1483,7 +1863,119 @@ const messages = {
       deleteForeverFailed: "Failed to delete document permanently",
       printFailed: "Failed to print",
       toggleFavoriteFailed: "Favorite action failed",
+      togglePinFailed: "Pin action failed",
       noteNotFound: (id) => `Document not found: ${id}`,
+    },
+    sync: {
+      title: "Multi-device Sync",
+      description: "Sync your notes across multiple devices using cloud storage.",
+      status: {
+        idle: "Synced",
+        syncing: "Syncing…",
+        error: "Sync error",
+        conflict: "Conflicts detected",
+        disabled: "Sync disabled",
+        notConfigured: "Sync not configured",
+      },
+      phase: {
+        scanning: "Scanning local files…",
+        comparing: "Comparing changes…",
+        uploading: "Uploading changes…",
+        downloading: "Downloading changes…",
+        merging: "Merging data…",
+        finalizing: "Finalizing sync…",
+      },
+      provider: {
+        s3: "S3-compatible storage",
+        baiduPan: "Baidu Pan",
+        googleDrive: "Google Drive",
+        webdav: "WebDAV",
+      },
+      providerLabel: "Storage type",
+      providerHint: "Choose a sync method and the matching connection and auth form will appear below.",
+      enabledDescription: "When enabled, this device will sync data with your other devices using the selected method.",
+      groups: {
+        connection: "Connection",
+        credentials: "Credentials",
+        syncSpace: "Sync space",
+        authorization: "Authorization",
+        oauthConfig: "OAuth setup",
+      },
+      s3: {
+        description: "For AWS S3, Cloudflare R2, MinIO, and other S3-compatible object storage services.",
+        endpointLabel: "Endpoint",
+        endpointPlaceholder: "https://s3.amazonaws.com",
+        regionLabel: "Region",
+        bucketLabel: "Bucket",
+        prefixLabel: "Prefix",
+        accessKeyIdLabel: "Access Key ID",
+        secretAccessKeyLabel: "Secret Access Key",
+      },
+      baiduPan: {
+        description: "For syncing through the Baidu Pan app directory with a brokered web authorization flow.",
+        remotePathLabel: "Remote path",
+        accountLabel: "Authorized account",
+        directoryDescription: `Syncs into the fixed directory ${DEFAULT_BAIDU_PAN_REMOTE_PATH}.`,
+        authTitle: "Web authorization",
+        authDescription: `Open the Baidu Pan authorization page in your browser. The app will capture the callback and finish authorization automatically. The broker service defaults to ${DEFAULT_BAIDU_PAN_AUTH_BROKER_URL}.`,
+        authorizeAction: "Open authorization page",
+        reauthorizeAction: "Authorize again",
+        authorizingAction: "Waiting for browser authorization…",
+        authorizedStatus: "Authorized",
+        unauthorizedStatus: "Not authorized",
+        brokerUnavailableError: "The Baidu Pan auth broker is unavailable. Start the broker service first.",
+        authorizationRequiredError: "Complete Baidu Pan authorization before saving sync settings.",
+      },
+      googleDrive: {
+        description: "Uses the hidden Google Drive appDataFolder and completes desktop authorization with a PKCE browser flow.",
+        clientIdLabel: "OAuth Client ID",
+        clientIdPlaceholder: "Enter your Google desktop OAuth client ID",
+        remotePathLabel: "Sync space",
+        accountLabel: "Authorized account",
+        directoryDescription: `Sync data is stored inside the Google Drive appDataFolder namespace ${DEFAULT_GOOGLE_DRIVE_REMOTE_PATH}.`,
+        authTitle: "PKCE browser authorization",
+        authDescription: "Enable the Drive API in Google Cloud Console and create a Desktop app OAuth client first. The app opens your system browser and completes the PKCE callback locally.",
+        authorizeAction: "Open Google authorization",
+        reauthorizeAction: "Authorize again",
+        authorizingAction: "Waiting for Google authorization…",
+        authorizedStatus: "Authorized",
+        unauthorizedStatus: "Not authorized",
+        clientIdRequiredError: "Enter a Google Drive OAuth client ID before authorizing.",
+        authorizationRequiredError: "Complete Google Drive authorization before saving sync settings.",
+      },
+      webdav: {
+        description: "For Nutstore, Nextcloud, Synology, and other storage services that support WebDAV.",
+        serverUrlLabel: "Server URL",
+        serverUrlPlaceholder: "https://dav.example.com",
+        usernameLabel: "Username",
+        usernamePlaceholder: "Enter username",
+        passwordLabel: "Password",
+        passwordPlaceholder: "Enter password",
+        remotePathLabel: "Remote path",
+      },
+      actions: {
+        syncNow: "Sync now",
+        save: "Save",
+        enable: "Enable sync",
+        disable: "Disable sync",
+      },
+      conflict: {
+        title: "File conflict",
+        keepLocal: "Keep local version",
+        keepCloud: "Keep cloud version",
+        keepBoth: "Keep both",
+      },
+      encryption: {
+        title: "End-to-end encryption",
+        description: "Set a passphrase to encrypt your synced data end-to-end.",
+        passphraseLabel: "Encryption passphrase",
+        passphrasePlaceholder: "Enter passphrase…",
+      },
+      result: {
+        pushed: (count) => `Uploaded ${count} note(s)`,
+        pulled: (count) => `Downloaded ${count} note(s)`,
+        conflicts: (count) => `${count} conflict(s)`,
+      },
     },
   },
 } satisfies Record<AppLocale, AppMessages>

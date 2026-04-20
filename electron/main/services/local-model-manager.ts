@@ -30,6 +30,8 @@ interface ActiveRuntimeSession {
 }
 
 const MANAGED_LOCAL_WRITE_MAX_TOKENS = 800
+const INTERRUPTED_MANAGED_LOCAL_INSTALL_MESSAGE = "The previous local model download was interrupted. Click retry to continue."
+const SHOULD_ENABLE_MANAGED_LOCAL_FLASH_ATTENTION = process.platform !== "darwin"
 
 export class LocalModelManager {
   private readonly artifactStore: LocalModelArtifactStore
@@ -50,6 +52,7 @@ export class LocalModelManager {
     }
 
     await this.artifactStore.ensureReady()
+    await this.recoverInterruptedManagedLocalInstalls()
     await this.artifactStore.setRuntimeState({
       state: "idle",
       activeModelId: null,
@@ -70,12 +73,23 @@ export class LocalModelManager {
     )
 
     if (persistedActive?.managedModelId) {
-      void this.activateManagedLocalByModelId(persistedActive.managedModelId).catch((error) => {
-        console.error(
-          `[metis-note] Failed to restore managed local runtime for ${persistedActive.managedModelId}.`,
-          error,
-        )
+      // Keep the model selected, but start the heavy local runtime lazily on the first
+      // real AI request instead of during app bootstrap.
+      await this.llmModelStore.syncManagedLocal(persistedActive.managedModelId, {
+        enabled: true,
+        endpoint: DEFAULT_MANAGED_LOCAL_ENDPOINT,
+        managedStatus: "ready",
+        managedProgress: 1,
+        managedStatusMessage: null,
       })
+
+      if (persistedActive.installedArtifactId) {
+        await this.artifactStore.updateArtifact(persistedActive.installedArtifactId, {
+          status: "ready",
+          progress: 1,
+          errorMessage: null,
+        })
+      }
     }
   }
 
@@ -205,7 +219,7 @@ export class LocalModelManager {
       const contextSize = Math.min(definition.contextLength, 16_384)
       context = await model.createContext({
         contextSize: { max: contextSize },
-        flashAttention: true,
+        flashAttention: SHOULD_ENABLE_MANAGED_LOCAL_FLASH_ATTENTION,
         failedCreationRemedy: {
           retries: 4,
         },
@@ -446,107 +460,47 @@ export class LocalModelManager {
         enabled: false,
       })
 
+      const downloadSources = definition.downloadSources.length > 0
+        ? definition.downloadSources
+        : [
+            {
+              id: "primary",
+              label: definition.publisher,
+              communityLabel: null,
+              pageUrl: definition.repositoryPage,
+              downloadUrl: definition.downloadUrl,
+            },
+          ]
+      let totalBytes = artifact?.totalBytes ?? estimatedBytes
       const tempPath = this.artifactStore.getPartialDownloadPath(definition)
       const finalPath = this.artifactStore.getInstalledModelPath(definition)
-      await mkdir(path.dirname(tempPath), { recursive: true })
-      await mkdir(path.dirname(finalPath), { recursive: true })
+      const sourceErrors: string[] = []
+      let downloadCompleted = false
 
-      let resumeBytes = 0
-
-      try {
-        resumeBytes = (await stat(tempPath)).size
-      } catch {
-        resumeBytes = 0
-      }
-
-      const headers = new Headers()
-
-      if (resumeBytes > 0) {
-        headers.set("Range", `bytes=${resumeBytes}-`)
-      }
-
-      const response = await fetch(definition.downloadUrl, {
-        headers,
-        signal,
-      })
-
-      if (!(response.ok || response.status === 206)) {
-        throw new Error(`Download failed: ${response.status} ${response.statusText}`)
-      }
-
-      const contentRange = response.headers.get("content-range")
-      const contentLengthHeader = response.headers.get("content-length")
-      const responseLength = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : NaN
-      const shouldAppend = response.status === 206 && resumeBytes > 0
-      const initialBytes = shouldAppend ? resumeBytes : 0
-      const totalBytes =
-        contentRange && contentRange.includes("/")
-          ? Number.parseInt(contentRange.split("/")[1] ?? "", 10)
-          : Number.isFinite(responseLength)
-            ? initialBytes + responseLength
-            : estimatedBytes
-
-      const output = createWriteStream(tempPath, { flags: shouldAppend ? "a" : "w" })
-
-      if (!response.body) {
-        throw new Error("Download response body is empty.")
-      }
-
-      let downloadedBytes = initialBytes
-      let lastPersist = 0
-
-      const reader = response.body.getReader()
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-
-          if (done) {
-            break
-          }
-
-          if (!value) {
-            continue
-          }
-
-          output.write(value)
-          downloadedBytes += value.byteLength
-
-          const now = Date.now()
-
-          if (downloadedBytes === totalBytes || now - lastPersist >= 500) {
-            const progress = totalBytes > 0 ? Math.min(1, downloadedBytes / totalBytes) : null
-            await this.artifactStore.updateArtifact(artifactId, {
-              status: "downloading",
-              downloadedBytes,
-              totalBytes,
-              progress,
-              errorMessage: null,
-            })
-            await this.llmModelStore.syncManagedLocal(definition.id, {
-              installedArtifactId: artifactId,
-              managedStatus: "downloading",
-              managedProgress: progress,
-              managedDownloadedBytes: downloadedBytes,
-              managedTotalBytes: totalBytes,
-              managedStatusMessage: null,
-              enabled: false,
-            })
-            lastPersist = now
-          }
-        }
-      } finally {
-        reader.releaseLock()
-        await new Promise<void>((resolve, reject) => {
-          output.end((error?: Error | null) => {
-            if (error) {
-              reject(error)
-              return
-            }
-
-            resolve()
+      for (const source of downloadSources) {
+        try {
+          totalBytes = await this.downloadManagedLocalFromSource({
+            artifactId,
+            definition,
+            estimatedBytes,
+            signal,
+            source,
           })
-        })
+          downloadCompleted = true
+          break
+        } catch (error) {
+          if (signal.aborted) {
+            return
+          }
+
+          const message = error instanceof Error ? error.message : "unknown error"
+          sourceErrors.push(`${source.label}: ${message}`)
+          this.writeRuntimeLog(`Managed local download source failed (${source.label}): ${message}`)
+        }
+      }
+
+      if (!downloadCompleted) {
+        throw new Error(sourceErrors.join(" | ") || "No available download source succeeded.")
       }
 
       await this.artifactStore.updateArtifact(artifactId, {
@@ -608,6 +562,150 @@ export class LocalModelManager {
         enabled: false,
       })
     }
+  }
+
+  private async recoverInterruptedManagedLocalInstalls() {
+    const artifacts = await this.artifactStore.listArtifacts()
+
+    for (const artifact of artifacts) {
+      if (!this.isInstallInProgressStatus(artifact.status)) {
+        continue
+      }
+
+      await this.artifactStore.updateArtifact(artifact.id, {
+        status: "attention",
+        errorMessage: INTERRUPTED_MANAGED_LOCAL_INSTALL_MESSAGE,
+      })
+      await this.llmModelStore.syncManagedLocal(artifact.modelId, {
+        installedArtifactId: artifact.id,
+        managedStatus: "attention",
+        managedProgress: artifact.progress ?? 0,
+        managedDownloadedBytes: artifact.downloadedBytes,
+        managedTotalBytes: artifact.totalBytes,
+        managedStatusMessage: INTERRUPTED_MANAGED_LOCAL_INSTALL_MESSAGE,
+        enabled: false,
+      })
+    }
+  }
+
+  private async downloadManagedLocalFromSource(options: {
+    artifactId: string
+    definition: ManagedLocalModelDefinition
+    estimatedBytes: number
+    signal: AbortSignal
+    source: ManagedLocalModelDefinition["downloadSources"][number]
+  }) {
+    const { artifactId, definition, estimatedBytes, signal, source } = options
+    const tempPath = this.artifactStore.getPartialDownloadPath(definition)
+    const finalPath = this.artifactStore.getInstalledModelPath(definition)
+    await mkdir(path.dirname(tempPath), { recursive: true })
+    await mkdir(path.dirname(finalPath), { recursive: true })
+
+    let resumeBytes = 0
+
+    try {
+      resumeBytes = (await stat(tempPath)).size
+    } catch {
+      resumeBytes = 0
+    }
+
+    const headers = new Headers()
+
+    if (resumeBytes > 0) {
+      headers.set("Range", `bytes=${resumeBytes}-`)
+    }
+
+    await this.artifactStore.updateArtifact(artifactId, {
+      status: "downloading",
+      downloadUrl: source.downloadUrl,
+      repositoryPage: source.pageUrl,
+      errorMessage: null,
+    })
+
+    const response = await fetch(source.downloadUrl, {
+      headers,
+      signal,
+    })
+
+    if (!(response.ok || response.status === 206)) {
+      throw new Error(`Download failed: ${response.status} ${response.statusText}`)
+    }
+
+    if (!response.body) {
+      throw new Error("Download response body is empty.")
+    }
+
+    const contentRange = response.headers.get("content-range")
+    const contentLengthHeader = response.headers.get("content-length")
+    const responseLength = contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : NaN
+    const shouldAppend = response.status === 206 && resumeBytes > 0
+    const initialBytes = shouldAppend ? resumeBytes : 0
+    const totalBytes =
+      contentRange && contentRange.includes("/")
+        ? Number.parseInt(contentRange.split("/")[1] ?? "", 10)
+        : Number.isFinite(responseLength)
+          ? initialBytes + responseLength
+          : estimatedBytes
+    const output = createWriteStream(tempPath, { flags: shouldAppend ? "a" : "w" })
+    let downloadedBytes = initialBytes
+    let lastPersist = 0
+    const reader = response.body.getReader()
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+
+        if (done) {
+          break
+        }
+
+        if (!value) {
+          continue
+        }
+
+        output.write(value)
+        downloadedBytes += value.byteLength
+
+        const now = Date.now()
+
+        if (downloadedBytes === totalBytes || now - lastPersist >= 500) {
+          const progress = totalBytes > 0 ? Math.min(1, downloadedBytes / totalBytes) : null
+          await this.artifactStore.updateArtifact(artifactId, {
+            status: "downloading",
+            downloadUrl: source.downloadUrl,
+            repositoryPage: source.pageUrl,
+            downloadedBytes,
+            totalBytes,
+            progress,
+            errorMessage: null,
+          })
+          await this.llmModelStore.syncManagedLocal(definition.id, {
+            installedArtifactId: artifactId,
+            managedStatus: "downloading",
+            managedProgress: progress,
+            managedDownloadedBytes: downloadedBytes,
+            managedTotalBytes: totalBytes,
+            managedStatusMessage: null,
+            enabled: false,
+          })
+          lastPersist = now
+        }
+      }
+    } finally {
+      reader.releaseLock()
+      await new Promise<void>((resolve, reject) => {
+        output.end((error?: Error | null) => {
+          if (error) {
+            reject(error)
+            return
+          }
+
+          resolve()
+        })
+      })
+    }
+
+    return totalBytes
   }
 
   private async stopActiveRuntime(options: { markCurrentReady?: boolean } = {}) {
@@ -794,6 +892,10 @@ export class LocalModelManager {
 
   private bytesFromGiB(value: number) {
     return Math.max(1, Math.round(value * 1024 * 1024 * 1024))
+  }
+
+  private isInstallInProgressStatus(status: string) {
+    return status === "preparing" || status === "downloading" || status === "installing"
   }
 
   private isArtifactReady(status: string) {

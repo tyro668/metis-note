@@ -1,4 +1,4 @@
-import { FolderOpen, Settings, Star, Trash2, type LucideIcon } from "lucide-react"
+import { FolderOpen, Heart, Settings, Trash2, type LucideIcon } from "lucide-react"
 import { useI18n } from "@/i18n/provider"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
@@ -18,7 +18,7 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad|iPod/.test(na
 
 const sideNavItems = [
   { view: "all", icon: FolderOpen },
-  { view: "favorites", icon: Star },
+  { view: "favorites", icon: Heart },
   { view: "trash", icon: Trash2 },
 ] satisfies Array<{
   view: NoteView
