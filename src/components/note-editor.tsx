@@ -1,5 +1,5 @@
 import { DragHandle as TiptapDragHandle } from "@tiptap/extension-drag-handle-react"
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { Fragment, useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from "react"
 import type { JSONContent } from "@tiptap/core"
 import { Fragment as ProseMirrorFragment, Node as ProseMirrorNode } from "@tiptap/pm/model"
 import { Plugin, PluginKey, type EditorState, type Transaction } from "@tiptap/pm/state"
@@ -114,6 +114,7 @@ interface NoteEditorProps {
   modeRequestId: number
   isLoading: boolean
   isSaving: boolean
+  hasUnsavedChanges: boolean
   lastSavedAt: string | null
   errorMessage: string | null
   onTitleChange: (title: string) => void
@@ -401,6 +402,7 @@ function formatStatusLabel(
   savingLabel: string,
   isSaving: boolean,
   errorMessage: string | null,
+  hasUnsavedChanges: boolean,
   lastSavedAt: string | null,
 ) {
   if (errorMessage) {
@@ -409,6 +411,10 @@ function formatStatusLabel(
 
   if (isSaving) {
     return savingLabel
+  }
+
+  if (hasUnsavedChanges) {
+    return unsavedLabel
   }
 
   return formatHeaderDate(locale, lastSavedAt, unsavedLabel)
@@ -679,6 +685,7 @@ export function NoteEditor({
   modeRequestId,
   isLoading,
   isSaving,
+  hasUnsavedChanges,
   lastSavedAt,
   errorMessage,
   onTitleChange,
@@ -717,6 +724,7 @@ export function NoteEditor({
   const [noteLinkPicker, setNoteLinkPicker] = useState<NoteLinkPickerState | null>(null)
   const [lightboxImage, setLightboxImage] = useState<LightboxImageState | null>(null)
   const [tableInsertPicker, setTableInsertPicker] = useState<TableInsertPickerState | null>(null)
+  const [isAssetDropActive, setIsAssetDropActive] = useState(false)
   const [backlinks, setBacklinks] = useState<NoteSummary[]>([])
   const menuRef = useRef<HTMLDivElement>(null)
   const formatMenuRef = useRef<HTMLDivElement>(null)
@@ -728,6 +736,7 @@ export function NoteEditor({
   const tableToolbarPickerRef = useRef<HTMLDivElement>(null)
   const editorSurfaceRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<Editor | null>(null)
+  const assetDragDepthRef = useRef(0)
   const tocOpenRef = useRef(false)
   const isVersionPreviewingRef = useRef(false)
   const syncingEditorContentRef = useRef(false)
@@ -1622,6 +1631,30 @@ export function NoteEditor({
   }, [isVersionPreviewing])
 
   useEffect(() => {
+    function clearAssetDragState() {
+      assetDragDepthRef.current = 0
+      setIsAssetDropActive(false)
+    }
+
+    window.addEventListener("drop", clearAssetDragState)
+    window.addEventListener("dragend", clearAssetDragState)
+
+    return () => {
+      window.removeEventListener("drop", clearAssetDragState)
+      window.removeEventListener("dragend", clearAssetDragState)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (canEditNote && isEditing && !isVersionPreviewing) {
+      return
+    }
+
+    assetDragDepthRef.current = 0
+    setIsAssetDropActive(false)
+  }, [canEditNote, isEditing, isVersionPreviewing, note?.id])
+
+  useEffect(() => {
     if (!editor) {
       return
     }
@@ -2438,6 +2471,111 @@ export function NoteEditor({
     window.alert(error instanceof Error ? error.message : fallbackMessage)
   }
 
+  function hasTransferredFiles(dataTransfer: DataTransfer | null | undefined) {
+    if (!dataTransfer) {
+      return false
+    }
+
+    if (dataTransfer.files.length > 0) {
+      return true
+    }
+
+    if (Array.from(dataTransfer.items ?? []).some((item) => item.kind === "file")) {
+      return true
+    }
+
+    return Array.from(dataTransfer.types ?? []).includes("Files")
+  }
+
+  function resetAssetDragState() {
+    assetDragDepthRef.current = 0
+    setIsAssetDropActive(false)
+  }
+
+  function handleAssetDragEnterCapture(event: ReactDragEvent<HTMLDivElement>) {
+    if (!hasTransferredFiles(event.dataTransfer)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = canEditNote && isEditing && !isVersionPreviewing ? "copy" : "none"
+    }
+
+    if (!canEditNote || !isEditing || isVersionPreviewing) {
+      return
+    }
+
+    assetDragDepthRef.current += 1
+    setIsAssetDropActive(true)
+  }
+
+  function handleAssetDragOverCapture(event: ReactDragEvent<HTMLDivElement>) {
+    if (!hasTransferredFiles(event.dataTransfer)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = canEditNote && isEditing && !isVersionPreviewing ? "copy" : "none"
+    }
+
+    if (!canEditNote || !isEditing || isVersionPreviewing) {
+      return
+    }
+
+    if (!isAssetDropActive) {
+      setIsAssetDropActive(true)
+    }
+  }
+
+  function handleAssetDragLeaveCapture(event: ReactDragEvent<HTMLDivElement>) {
+    if (!hasTransferredFiles(event.dataTransfer)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (!canEditNote || !isEditing || isVersionPreviewing) {
+      resetAssetDragState()
+      return
+    }
+
+    assetDragDepthRef.current = Math.max(0, assetDragDepthRef.current - 1)
+
+    if (assetDragDepthRef.current === 0) {
+      setIsAssetDropActive(false)
+    }
+  }
+
+  function handleAssetDropCapture(event: ReactDragEvent<HTMLDivElement>) {
+    if (!hasTransferredFiles(event.dataTransfer)) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    const files = Array.from(event.dataTransfer.files ?? []) as EditorAssetFile[]
+    resetAssetDragState()
+
+    if (!editor || !note || !canEditNote || !isEditing || isVersionPreviewing || files.length === 0) {
+      return
+    }
+
+    const coordinates = editor.view.posAtCoords({
+      left: event.clientX,
+      top: event.clientY,
+    })
+
+    void handleInsertAssetFiles(files, coordinates?.pos)
+  }
+
   function createManagedImageNode(asset: ImageAssetResult): JSONContent {
     return {
       type: "image",
@@ -2515,6 +2653,7 @@ export function NoteEditor({
     setSlashCommand(null)
     setNoteLinkPickerState(null)
     setTableInsertPicker(null)
+    setActiveTableMenu(null)
     setIsFormatMenuOpen(false)
     setIsHighlightMenuOpen(false)
 
@@ -3006,6 +3145,7 @@ export function NoteEditor({
     messages.editor.saving,
     isSaving,
     errorMessage,
+    hasUnsavedChanges,
     lastSavedAt,
   )
   const headerStatusClassName = errorMessage
@@ -3822,7 +3962,14 @@ export function NoteEditor({
               ) : null}
 
               <div className="min-h-0 flex-1 xl:flex xl:items-start xl:gap-6">
-                <div className="relative min-h-[560px] min-w-0 flex-1" ref={editorSurfaceRef}>
+                <div
+                  className="relative min-h-[560px] min-w-0 flex-1"
+                  ref={editorSurfaceRef}
+                  onDragEnterCapture={handleAssetDragEnterCapture}
+                  onDragLeaveCapture={handleAssetDragLeaveCapture}
+                  onDragOverCapture={handleAssetDragOverCapture}
+                  onDropCapture={handleAssetDropCapture}
+                >
                   <TocPanel
                     activePos={activeTocPos}
                     collapseLabel={messages.editor.toc.collapse}
@@ -3840,6 +3987,22 @@ export function NoteEditor({
                         <GripVertical className="h-3.5 w-3.5" />
                       </span>
                     </TiptapDragHandle>
+                  ) : null}
+
+                  {isAssetDropActive && canEditNote && isEditing && !isVersionPreviewing ? (
+                    <div className="pointer-events-none absolute inset-0 z-40 rounded-[28px] border-2 border-dashed border-[#2563eb]/70 bg-[#eff6ff]/78 backdrop-blur-[1px] dark:border-[#60a5fa]/70 dark:bg-[#0f172acc]">
+                      <div className="absolute inset-4 flex items-center justify-center rounded-[24px] border border-white/60 bg-white/28 dark:border-[#1e293b] dark:bg-[#020817]/22">
+                        <div className="flex max-w-[360px] flex-col items-center gap-3 rounded-3xl border border-white/70 bg-white/92 px-6 py-5 text-center shadow-[0_18px_44px_rgba(37,99,235,0.16)] dark:border-[#243041] dark:bg-[#020817]/94">
+                          <div className="flex items-center gap-2 text-[#2563eb] dark:text-[#93c5fd]">
+                            <ImagePlus className="h-5 w-5" />
+                            <Paperclip className="h-5 w-5" />
+                          </div>
+                          <div className="text-sm font-semibold text-[#1d4ed8] dark:text-[#dbeafe]">
+                            {messages.editor.assets.dropToInsert}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   ) : null}
 
                   <EditorContent editor={editor} />

@@ -412,6 +412,7 @@ export interface AppMessages {
       assetNotFound: string
       importImageFailed: string
       importFileFailed: string
+      dropToInsert: string
       openAttachment: string
       previewImage: string
       replaceImage: string
@@ -1067,6 +1068,7 @@ const messages = {
         assetNotFound: "找不到对应的资源文件",
         importImageFailed: "导入图片失败",
         importFileFailed: "导入附件失败",
+        dropToInsert: "松手后将图片或附件插入文档",
         openAttachment: "打开附件",
         previewImage: "查看图片",
         replaceImage: "替换图片",
@@ -1721,6 +1723,7 @@ const messages = {
         assetNotFound: "The requested asset could not be found.",
         importImageFailed: "Failed to import image.",
         importFileFailed: "Failed to import attachment.",
+        dropToInsert: "Release to insert images or attachments.",
         openAttachment: "Open attachment",
         previewImage: "Preview image",
         replaceImage: "Replace image",

@@ -36,15 +36,7 @@ interface TreeNode {
   children: TreeNode[]
 }
 
-function compareTreeNotes(left: NoteSummary, right: NoteSummary, view: NoteView) {
-  if (view !== "trash" && left.isPinned !== right.isPinned) {
-    return left.isPinned ? -1 : 1
-  }
-
-  return Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
-}
-
-function buildNoteTree(notes: NoteSummary[], view: NoteView) {
+function buildNoteTree(notes: NoteSummary[]) {
   const byId = new Map<string, TreeNode>()
 
   for (const note of notes) {
@@ -70,13 +62,6 @@ function buildNoteTree(notes: NoteSummary[], view: NoteView) {
 
     roots.push(node)
   }
-
-  const sortBranch = (branch: TreeNode[]) => {
-    branch.sort((left, right) => compareTreeNotes(left.note, right.note, view))
-    branch.forEach((node) => sortBranch(node.children))
-  }
-
-  sortBranch(roots)
 
   return roots
 }
@@ -128,12 +113,11 @@ export function NoteList({
       : activeView === "trash"
         ? messages.tree.emptyTrash
         : messages.tree.emptyAll
-  const tree = useMemo(() => buildNoteTree(notes, activeView), [notes, activeView])
+  const tree = useMemo(() => buildNoteTree(notes), [notes])
   const pinnedNodes = useMemo(() => {
     if (activeView !== "all") return []
     return notes
       .filter((note) => note.isPinned)
-      .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
       .map((note) => ({ note, children: [] as TreeNode[] }))
   }, [activeView, notes])
   const regularRoots = useMemo(() => tree, [tree])

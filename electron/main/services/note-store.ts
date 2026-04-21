@@ -412,14 +412,14 @@ export class NoteStore {
       }
 
       console.warn("[metis-note] index.json is missing and will be rebuilt from items.")
-      return this.sortNotes(await rebuildIndexFromItems(this.baseDir, this.locale))
+      return rebuildIndexFromItems(this.baseDir, this.locale)
     }
 
     const payload = JSON.parse(raw) as { version?: number; notes?: StoredSummary[] }
 
     if ((payload.notes?.length ?? 0) === 0 && await this.hasAnyItemFiles()) {
       console.warn("[metis-note] index.json is empty while note item files exist and will be rebuilt.")
-      return this.sortNotes(await rebuildIndexFromItems(this.baseDir, this.locale))
+      return rebuildIndexFromItems(this.baseDir, this.locale)
     }
 
     const normalized = (payload.notes ?? []).map((note) => this.normalizeSummary(note))
@@ -434,13 +434,13 @@ export class NoteStore {
       await this.writeIndex(existing)
     }
 
-    return this.sortNotes(existing)
+    return existing
   }
 
   private async writeIndex(notes: NoteSummary[]) {
     const payload: NoteIndexPayload = {
       version: 4,
-      notes: this.sortNotes(notes),
+      notes: [...notes],
     }
 
     await writeFile(this.indexPath, JSON.stringify(payload, null, 2), "utf-8")
@@ -483,7 +483,7 @@ export class NoteStore {
   }
 
   private sortNotes(notes: NoteSummary[]) {
-    return [...notes].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+    return [...notes]
   }
 
   private sanitizeHierarchy(notes: NoteSummary[]) {

@@ -97,6 +97,8 @@ export async function rebuildIndexFromItems(
     }
   }
 
+  const existingOrder = new Map(existingIndex.map((note, index) => [note.id, index]))
+
   // Sanitize hierarchy: orphan parentId references
   const idSet = new Set(summaries.map((s) => s.id))
 
@@ -106,8 +108,24 @@ export async function rebuildIndexFromItems(
     }
   }
 
-  // Sort by updatedAt descending (same as NoteStore convention)
-  summaries.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  summaries.sort((left, right) => {
+    const leftOrder = existingOrder.get(left.id)
+    const rightOrder = existingOrder.get(right.id)
+
+    if (leftOrder !== undefined && rightOrder !== undefined) {
+      return leftOrder - rightOrder
+    }
+
+    if (leftOrder !== undefined) {
+      return -1
+    }
+
+    if (rightOrder !== undefined) {
+      return 1
+    }
+
+    return left.id.localeCompare(right.id)
+  })
 
   const payload: NoteIndexPayload = { version: 4, notes: summaries }
   await writeFile(indexPath, JSON.stringify(payload, null, 2))

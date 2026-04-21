@@ -36,16 +36,23 @@ function noteSnapshot(note: NoteDocument | null) {
   })
 }
 
-function sortNotes(list: NoteSummary[]) {
-  return [...list].sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-}
-
 function upsertSummary(list: NoteSummary[], note: NoteSummary) {
-  return sortNotes([note, ...list.filter((item) => item.id !== note.id)])
+  const existingIndex = list.findIndex((item) => item.id === note.id)
+
+  if (existingIndex === -1) {
+    return [note, ...list]
+  }
+
+  return list.map((item) => (item.id === note.id ? note : item))
 }
 
 function replaceSummary(list: NoteSummary[], note: NoteSummary) {
-  return sortNotes(list.map((item) => (item.id === note.id ? note : item)))
+  return list.map((item) => (item.id === note.id ? note : item))
+}
+
+function toSummary(note: NoteDocument): NoteSummary {
+  const { content: _content, ...summary } = note
+  return summary
 }
 
 function matchesSearch(note: NoteSummary, keyword: string) {
@@ -70,13 +77,7 @@ function filterNotes(notes: NoteSummary[], view: NoteView, searchValue: string) 
     filtered = filtered.filter((note) => matchesSearch(note, keyword))
   }
 
-  return [...filtered].sort((left, right) => {
-    if (view !== "trash" && left.isPinned !== right.isPinned) {
-      return left.isPinned ? -1 : 1
-    }
-
-    return Date.parse(right.updatedAt) - Date.parse(left.updatedAt)
-  })
+  return filtered
 }
 
 function pickVisibleNoteId(notes: NoteSummary[], preferredId: string | null, view: NoteView, searchValue: string) {
@@ -158,16 +159,27 @@ export default function App() {
   const selectedIdRef = useRef<string | null>(null)
   const draftRef = useRef<NoteDocument | null>(null)
   const saveTimerRef = useRef<number | null>(null)
-  const pendingSaveRef = useRef<Promise<unknown> | null>(null)
+  const pendingSaveRef = useRef<Promise<NoteDocument | null> | null>(null)
   const lastPersistedSnapshotRef = useRef<string | null>(null)
   const noteSyncStatesRequestIdRef = useRef(0)
   const plainTextRef = useRef("")
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchValueRef = useRef("")
   const activeViewRef = useRef<NoteView>("all")
+  const [draftOverrides, setDraftOverrides] = useState<Record<string, NoteDocument>>({})
+  const draftOverridesRef = useRef<Record<string, NoteDocument>>({})
 
-  const visibleNotes = filterNotes(allNotes, activeView, searchValue)
-  const counts = countsFor(allNotes)
+  const notesWithDraftOverrides = useMemo(
+    () =>
+      allNotes.map((note) => {
+        const draft = draftOverrides[note.id]
+        return draft ? toSummary(draft) : note
+      }),
+    [allNotes, draftOverrides],
+  )
+
+  const visibleNotes = filterNotes(notesWithDraftOverrides, activeView, searchValue)
+  const counts = countsFor(notesWithDraftOverrides)
   const requestEditorOpenMode = useCallback((mode: EditorOpenMode) => {
     setEditorOpenRequest((current) => ({
       mode,
@@ -179,6 +191,40 @@ export default function App() {
     const snapshot = noteSnapshot(note)
 
     return Boolean(snapshot && snapshot !== lastPersistedSnapshotRef.current)
+  }, [])
+
+  const syncDraftOverride = useCallback((note: NoteDocument | null, persistedSnapshot: string | null = lastPersistedSnapshotRef.current) => {
+    if (!note) {
+      return
+    }
+
+    const nextSnapshot = noteSnapshot(note)
+
+    setDraftOverrides((current) => {
+      const next = { ...current }
+
+      if (!nextSnapshot || nextSnapshot === persistedSnapshot) {
+        delete next[note.id]
+      } else {
+        next[note.id] = note
+      }
+
+      draftOverridesRef.current = next
+      return next
+    })
+  }, [])
+
+  const clearDraftOverride = useCallback((noteId: string) => {
+    setDraftOverrides((current) => {
+      if (!current[noteId]) {
+        return current
+      }
+
+      const next = { ...current }
+      delete next[noteId]
+      draftOverridesRef.current = next
+      return next
+    })
   }, [])
 
   const refreshNoteSyncStates = useCallback(async () => {
@@ -308,9 +354,12 @@ export default function App() {
         }
 
         lastPersistedSnapshotRef.current = noteSnapshot(note)
-        plainTextRef.current = note?.plainText ?? ""
+        const draftOverride = draftOverridesRef.current[selectedNoteId] ?? null
+        const nextDraft = draftOverride ?? note
 
-        setDraftNote(note)
+        plainTextRef.current = nextDraft?.plainText ?? note?.plainText ?? ""
+        draftRef.current = nextDraft
+        setDraftNote(nextDraft)
 
         setLastSavedAt(note?.updatedAt ?? null)
         setErrorMessage(null)
@@ -331,41 +380,6 @@ export default function App() {
       active = false
     }
   }, [messages.errors.readNoteFailed, selectedNoteId])
-
-  useEffect(() => {
-    if (!draftNote || draftNote.status !== "active") {
-      return
-    }
-
-    const snapshot = noteSnapshot(draftNote)
-
-    if (!snapshot || snapshot === lastPersistedSnapshotRef.current) {
-      return
-    }
-
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current)
-    }
-
-    saveTimerRef.current = window.setTimeout(() => {
-      saveTimerRef.current = null
-      const current = draftRef.current
-
-      if (!current || current.status !== "active") {
-        return
-      }
-
-      pendingSaveRef.current = persistNote(current, plainTextRef.current).finally(() => {
-        pendingSaveRef.current = null
-      })
-    }, 700)
-
-    return () => {
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current)
-      }
-    }
-  }, [draftNote])
 
   useEffect(() => {
     if (!noticeMessage) {
@@ -474,33 +488,6 @@ export default function App() {
     }
   }, [refreshNoteSyncStates, refreshSelectedDraftFromDisk, requestEditorOpenMode])
 
-  const triggerSyncAfterManualSave = useCallback(() => {
-    void (async () => {
-      try {
-        const result = await window.metisNote.sync.syncNow()
-
-        if (result.status === "success" && result.pulled > 0) {
-          await refreshNotes(selectedIdRef.current, undefined, { reloadSelectedFromDisk: true })
-          return
-        }
-
-        await refreshNoteSyncStates()
-      } catch {
-        // Keep save success separate from background sync failures.
-      }
-    })()
-  }, [refreshNoteSyncStates, refreshNotes])
-
-  const handleManualCommitEdits = useCallback(async () => {
-    const shouldSyncAfterSave = hasPendingDraftChanges() || pendingSaveRef.current !== null || saveTimerRef.current !== null
-
-    await flushPendingSave()
-
-    if (shouldSyncAfterSave) {
-      triggerSyncAfterManualSave()
-    }
-  }, [hasPendingDraftChanges, triggerSyncAfterManualSave])
-
   function cancelScheduledSave() {
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current)
@@ -508,11 +495,67 @@ export default function App() {
     }
   }
 
+  const handleManualCommitEdits = useCallback(async () => {
+    const current = draftRef.current
+
+    if (!current || current.status !== "active") {
+      return
+    }
+
+    const shouldSave = hasPendingDraftChanges(current)
+    let saved = current
+
+    if (shouldSave) {
+      cancelScheduledSave()
+      pendingSaveRef.current = persistNote(current, plainTextRef.current).finally(() => {
+        pendingSaveRef.current = null
+      })
+
+      const result = await pendingSaveRef.current
+
+      if (!result) {
+        return
+      }
+
+      saved = result
+    }
+
+    if (syncStatus.state === "disabled" || syncStatus.state === "not-configured") {
+      return
+    }
+
+    if (!shouldSave && noteSyncStates[saved.id] !== "upload-pending") {
+      return
+    }
+
+    setNoteSyncStates((currentStates) =>
+      currentStates[saved.id] === "conflict"
+        ? currentStates
+        : {
+            ...currentStates,
+            [saved.id]: "upload-pending",
+          },
+    )
+
+    try {
+      const result = await window.metisNote.sync.syncNow()
+
+      if (result.status === "success" && result.pulled > 0) {
+        await refreshNotes(selectedIdRef.current, undefined, { reloadSelectedFromDisk: true })
+        return
+      }
+
+      await refreshNoteSyncStates()
+    } catch {
+      // Keep save success separate from background sync failures.
+    }
+  }, [cancelScheduledSave, hasPendingDraftChanges, noteSyncStates, refreshNoteSyncStates, refreshNotes, syncStatus.state])
+
   async function persistNote(note: NoteDocument, plainText: string) {
     const snapshot = noteSnapshot(note)
 
     if (!snapshot || snapshot === lastPersistedSnapshotRef.current) {
-      return
+      return null
     }
 
     setIsSaving(true)
@@ -553,7 +596,7 @@ export default function App() {
         return merged
       })
       setAllNotes((current) => upsertSummary(current, saved))
-      await refreshNoteSyncStates()
+      clearDraftOverride(saved.id)
       return saved
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : messages.errors.saveFailed)
@@ -566,12 +609,6 @@ export default function App() {
   async function flushPendingSave() {
     cancelScheduledSave()
 
-    const current = draftRef.current
-
-    if (current && current.status === "active") {
-      await persistNote(current, plainTextRef.current)
-    }
-
     if (pendingSaveRef.current) {
       await pendingSaveRef.current
     }
@@ -582,7 +619,7 @@ export default function App() {
       return null
     }
 
-    return allNotes.find((note) => note.id === selectedIdRef.current && note.status === "active") ?? null
+    return notesWithDraftOverrides.find((note) => note.id === selectedIdRef.current && note.status === "active") ?? null
   }
 
   async function handleSelectNote(id: string, mode: EditorOpenMode) {
@@ -680,6 +717,7 @@ export default function App() {
 
       activeViewRef.current = nextView
       setActiveView(nextView)
+      clearDraftOverride(restored.id)
       setDraftNote(restored)
       requestEditorOpenMode("preview")
       setLastSavedAt(restored.updatedAt)
@@ -822,6 +860,7 @@ export default function App() {
     try {
       await flushPendingSave()
       await window.metisNote.notes.trash(id)
+      clearDraftOverride(id)
       await refreshNotes(selectedIdRef.current === id ? null : selectedIdRef.current, selectedIdRef.current === id ? "preview" : undefined)
       setNoticeMessage(messages.notices.movedToTrash(title))
       setErrorMessage(null)
@@ -862,6 +901,7 @@ export default function App() {
     try {
       await flushPendingSave()
       const result = await window.metisNote.notes.deleteForever(id)
+      clearDraftOverride(id)
       await refreshNotes(result.nextNoteId, "preview")
       setNoticeMessage(messages.notices.deletedForever(title))
       setErrorMessage(null)
@@ -885,9 +925,10 @@ export default function App() {
           isPinned: !draftRef.current.isPinned,
         }
 
+        draftRef.current = next
         setDraftNote(next)
         setAllNotes((current) => replaceSummary(current, next))
-        await persistNote(next, plainTextRef.current)
+        syncDraftOverride(next)
         return
       }
 
@@ -917,9 +958,10 @@ export default function App() {
           isFavorite: !draftRef.current.isFavorite,
         }
 
+        draftRef.current = next
         setDraftNote(next)
         setAllNotes((current) => replaceSummary(current, next))
-        await persistNote(next, plainTextRef.current)
+        syncDraftOverride(next)
         return
       }
 
@@ -947,6 +989,7 @@ export default function App() {
 
     draftRef.current = next
     setDraftNote(next)
+    syncDraftOverride(next)
     setAllNotes((current) =>
       current.map((note) =>
         note.id === draftNote.id
@@ -977,6 +1020,7 @@ export default function App() {
 
     draftRef.current = next
     setDraftNote(next)
+    syncDraftOverride(next)
 
     setAllNotes((current) =>
       current.map((note) =>
@@ -1012,20 +1056,7 @@ export default function App() {
     setIsFocusMode((current) => !current)
   }
 
-  const effectiveNoteSyncStates = useMemo(() => {
-    if (!draftNote || draftNote.status !== "active" || !hasPendingDraftChanges(draftNote)) {
-      return noteSyncStates
-    }
-
-    if (noteSyncStates[draftNote.id] === "conflict") {
-      return noteSyncStates
-    }
-
-    return {
-      ...noteSyncStates,
-      [draftNote.id]: "upload-pending",
-    } satisfies NoteSyncStateMap
-  }, [draftNote, hasPendingDraftChanges, noteSyncStates])
+  const effectiveNoteSyncStates = noteSyncStates
 
   const syncBarContent = useMemo(() => {
     switch (syncStatus.state) {
@@ -1105,8 +1136,7 @@ export default function App() {
     }
   }, [refreshNoteSyncStates, refreshNotes])
 
-  // Auto-sync after save is disabled — sync only triggers on manual save
-  // (Cmd+S) via triggerSyncAfterManualSave(), or via the background timer.
+  // Drafts stay local to the current session until explicitly saved.
 
   return (
     <main
@@ -1158,12 +1188,13 @@ export default function App() {
               <div className={cn("min-h-0 min-w-0 flex-1 border-t border-[#edf1f7] dark:border-[#1f2937] xl:border-t-0", isFocusMode && "border-t-0")}>
                 <NoteEditor
                   key={draftNote?.id ?? "empty"}
-                  allNotes={allNotes}
+                  allNotes={notesWithDraftOverrides}
                   note={draftNote}
                   requestedMode={editorOpenRequest.mode}
                   modeRequestId={editorOpenRequest.id}
                   isLoading={isLoadingNote}
                   isSaving={isSaving}
+                  hasUnsavedChanges={Boolean(draftNote && hasPendingDraftChanges(draftNote))}
                   errorMessage={errorMessage}
                   lastSavedAt={lastSavedAt}
                   onTitleChange={handleTitleChange}
