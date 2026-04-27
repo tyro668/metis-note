@@ -381,45 +381,6 @@ const ManagedTable = Table.extend({
   },
 })
 
-function formatHeaderDate(locale: AppLocale, value: string | null, unsavedLabel: string) {
-  if (!value) {
-    return unsavedLabel
-  }
-
-  return new Intl.DateTimeFormat(locale, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(value))
-}
-
-function formatStatusLabel(
-  locale: AppLocale,
-  unsavedLabel: string,
-  savingLabel: string,
-  isSaving: boolean,
-  errorMessage: string | null,
-  hasUnsavedChanges: boolean,
-  lastSavedAt: string | null,
-) {
-  if (errorMessage) {
-    return errorMessage
-  }
-
-  if (isSaving) {
-    return savingLabel
-  }
-
-  if (hasUnsavedChanges) {
-    return unsavedLabel
-  }
-
-  return formatHeaderDate(locale, lastSavedAt, unsavedLabel)
-}
-
 function formatVersionTimestamp(locale: AppLocale, value: string) {
   return new Intl.DateTimeFormat(locale, {
     month: "short",
@@ -704,7 +665,6 @@ export function NoteEditor({
 }: NoteEditorProps) {
   const { locale, messages } = useI18n()
   const [isEditing, setIsEditing] = useState(false)
-  const [isTitleEditing, setIsTitleEditing] = useState(false)
   const [titleDraft, setTitleDraft] = useState(note?.title ?? "")
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
   const [isFormatMenuOpen, setIsFormatMenuOpen] = useState(false)
@@ -1681,7 +1641,6 @@ export function NoteEditor({
 
   useEffect(() => {
     setIsEditing(false)
-    setIsTitleEditing(false)
     setTitleDraft(note?.title ?? "")
     setIsMoreMenuOpen(false)
     setIsFormatMenuOpen(false)
@@ -1720,17 +1679,20 @@ export function NoteEditor({
   }, [note?.id, note?.status, note?.updatedAt])
 
   useEffect(() => {
-    if (!isTitleEditing) {
+    if (!isEditing) {
       setTitleDraft(note?.title ?? "")
     }
-  }, [isTitleEditing, note?.title])
+  }, [isEditing, note?.title])
 
   useEffect(() => {
     const nextIsEditing = canEditNote && requestedMode === "edit"
     setIsEditing(nextIsEditing)
 
+    if (nextIsEditing) {
+      setTitleDraft(note?.title ?? "")
+    }
+
     if (!nextIsEditing) {
-      setIsTitleEditing(false)
       setIsHighlightMenuOpen(false)
     }
   }, [canEditNote, modeRequestId, requestedMode])
@@ -2856,7 +2818,6 @@ export function NoteEditor({
       }
 
       setIsEditing(false)
-      setIsTitleEditing(false)
       setIsMoreMenuOpen(false)
       setIsFormatMenuOpen(false)
       setIsHighlightMenuOpen(false)
@@ -3038,36 +2999,6 @@ export function NoteEditor({
   retryAiWriteRef.current = handleRetryAiWrite
   runSelectedSlashCommandRef.current = handleRunSelectedSlashCommand
 
-  function beginTitleEdit() {
-    if (!note || !canEditNote || isVersionPreviewing) {
-      return
-    }
-
-    setTitleDraft(note.title)
-    setIsTitleEditing(true)
-  }
-
-  function cancelTitleEdit() {
-    setTitleDraft(note?.title ?? "")
-    setIsTitleEditing(false)
-  }
-
-  function confirmTitleEdit() {
-    if (!note || !canEditNote) {
-      setIsTitleEditing(false)
-      return
-    }
-
-    const nextTitle = titleDraft.trim() || messages.notes.emptyTitle
-
-    if (nextTitle !== note.title) {
-      onTitleChange(titleDraft)
-      void onCommitEdits()
-    }
-
-    setIsTitleEditing(false)
-  }
-
   async function handlePrimaryAction() {
     if (!canEditNote) {
       return
@@ -3084,14 +3015,10 @@ export function NoteEditor({
       return
     }
 
-    if (isTitleEditing) {
-      const nextTitle = titleDraft.trim() || messages.notes.emptyTitle
+    const nextTitle = titleDraft.trim() || messages.notes.emptyTitle
 
-      if (nextTitle !== (note?.title ?? "")) {
-        onTitleChange(titleDraft)
-      }
-
-      setIsTitleEditing(false)
+    if (nextTitle !== (note?.title ?? "")) {
+      onTitleChange(titleDraft)
     }
 
     setIsMoreMenuOpen(false)
@@ -3139,21 +3066,6 @@ export function NoteEditor({
     editor?.isActive("highlight") && typeof editor.getAttributes("highlight").color === "string"
       ? (editor.getAttributes("highlight").color as string)
       : null
-  const headerStatusLabel = formatStatusLabel(
-    locale,
-    messages.editor.unsaved,
-    messages.editor.saving,
-    isSaving,
-    errorMessage,
-    hasUnsavedChanges,
-    lastSavedAt,
-  )
-  const headerStatusClassName = errorMessage
-    ? "border-[rgba(249,115,22,0.18)] bg-[rgba(255,247,237,0.92)] text-[#c2410c] dark:border-[rgba(249,115,22,0.24)] dark:bg-[rgba(154,52,18,0.16)] dark:text-[#fdba74]"
-    : isSaving
-      ? "border-[rgba(59,130,246,0.16)] bg-[rgba(239,244,255,0.96)] text-[#375bd2] dark:border-[rgba(59,130,246,0.22)] dark:bg-[#13233f] dark:text-[#93c5fd]"
-      : "border-[#eef2f7] bg-[#f8fafc] text-[#8d95a2] dark:border-[#243041] dark:bg-[#0f172a] dark:text-slate-400"
-  const headerStatusDotClassName = errorMessage ? "bg-[#f97316]" : isSaving ? "bg-[#60a5fa]" : "bg-[#84cc16]"
   const dragHandleTippyOptions = useMemo(
     () => ({
       placement: "left-start" as const,
@@ -3170,69 +3082,9 @@ export function NoteEditor({
         <div className="note-editor-header border-b border-[#eef2f7] px-5 py-2.5 dark:border-[#1f2937] md:px-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-                <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[#eef4ff] text-[#4a7cff] dark:bg-[#13233f] dark:text-[#8eb8ff]">
-                  <FileText className="h-4 w-4" />
-                </span>
-
-                {isTitleEditing && canEditNote ? (
-                  <>
-                    <input
-                      autoFocus
-                      className="min-w-[220px] flex-1 border-none bg-transparent p-0 text-[17px] font-semibold tracking-[-0.02em] text-foreground outline-none placeholder:text-[#b5bcc7] dark:placeholder:text-slate-500 md:text-[18px]"
-                      placeholder={messages.editor.titlePlaceholder}
-                      value={titleDraft}
-                      onChange={(event) => setTitleDraft(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault()
-                          confirmTitleEdit()
-                        }
-
-                        if (event.key === "Escape") {
-                          event.preventDefault()
-                          cancelTitleEdit()
-                        }
-                      }}
-                    />
-
-                    <div className="flex items-center gap-1.5">
-                      <Button className="h-7 rounded-md px-2.5 text-[12px]" size="sm" onClick={confirmTitleEdit}>
-                        {messages.editor.confirmTitleButton}
-                      </Button>
-                      <Button className="h-7 rounded-md px-2.5 text-[12px]" size="sm" variant="ghost" onClick={cancelTitleEdit}>
-                        {messages.editor.cancelTitleButton}
-                      </Button>
-                    </div>
-                  </>
-                ) : (
-                  <h1
-                    className={cn(
-                      "min-w-0 truncate text-[17px] font-semibold tracking-[-0.02em] text-foreground md:text-[18px]",
-                      canEditNote && !isVersionPreviewing && "cursor-text",
-                    )}
-                    onDoubleClick={beginTitleEdit}
-                  >
-                    {note.title}
-                  </h1>
-                )}
-
-                {!isFocusMode ? (
-                  <span
-                    className={cn(
-                      "save-status inline-flex h-7 shrink-0 items-center gap-2 rounded-md border px-2.5 text-[12px] font-medium",
-                      headerStatusClassName,
-                    )}
-                  >
-                    <span className={cn("h-2 w-2 rounded-full", headerStatusDotClassName)} />
-                    <span className="truncate">{headerStatusLabel}</span>
-                  </span>
-                ) : null}
-              </div>
-
               {!isFocusMode && note.visibility === "public" ? (
                 <div className="mt-2 flex flex-wrap items-center gap-2.5 text-[12px] text-[#8d95a2] dark:text-slate-500">
-                  {note.visibility === "public" ? <MetaPill>{messages.editor.publicVisibility}</MetaPill> : null}
+                  <MetaPill>{messages.editor.publicVisibility}</MetaPill>
                 </div>
               ) : null}
             </div>
@@ -3958,6 +3810,63 @@ export function NoteEditor({
                       </div>
                     ) : null}
                   </div>
+                </div>
+              ) : null}
+
+              {!isVersionPreviewing ? (
+                <div className="mb-4">
+                  {isEditing && canEditNote ? (
+                    <>
+                      <input
+                        autoFocus
+                        className="w-full border-none bg-transparent p-0 text-[22px] font-semibold tracking-[-0.02em] text-foreground outline-none placeholder:text-[#b5bcc7] dark:placeholder:text-slate-500 md:text-[24px]"
+                        placeholder={messages.editor.titlePlaceholder}
+                        value={titleDraft}
+                        onChange={(event) => setTitleDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault()
+                          }
+
+                          if (event.key === "Escape") {
+                            event.preventDefault()
+                            setTitleDraft(note?.title ?? "")
+                          }
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <div>
+                      <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-foreground md:text-[24px]">
+                        {note?.title}
+                      </h1>
+                      <p className="mt-1 text-[12px] text-[#8d95a2] dark:text-slate-500">
+                        {messages.editor.createdAt}{" "}
+                        {note?.createdAt
+                          ? new Intl.DateTimeFormat(locale, {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            }).format(new Date(note.createdAt))
+                          : ""}
+                        {" · "}
+                        {messages.editor.modifiedAt}{" "}
+                        {note?.updatedAt
+                          ? new Intl.DateTimeFormat(locale, {
+                              year: "numeric",
+                              month: "long",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            }).format(new Date(note.updatedAt))
+                          : ""}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : null}
 

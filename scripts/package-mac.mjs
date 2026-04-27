@@ -47,6 +47,11 @@ async function main() {
   await utimes(appBundlePath, now, now)
   await utimes(appContainerDir, now, now)
 
+  const zipPath = path.join(releaseDir, `${appName}-${process.platform}-${process.arch}.zip`)
+  await rm(zipPath, { force: true })
+  run(rootDir, "ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", appContainerDir, zipPath])
+
+  console.log(`App archive created at: ${zipPath}`)
   console.log(`Packaged app created at: ${appBundlePath}`)
 }
 

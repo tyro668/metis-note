@@ -309,6 +309,8 @@ export interface AppMessages {
     trashedReadonlyNotice: string
     emptyTitle: string
     emptyDescription: string
+    createdAt: string
+    modifiedAt: string
     formatting: {
       bold: string
       italic: string
@@ -965,6 +967,8 @@ const messages = {
       trashedReadonlyNotice: "这篇笔记目前位于回收站，内容已切换为只读。你可以恢复后继续编辑，或者直接彻底删除。",
       emptyTitle: "选择一篇文档开始",
       emptyDescription: "左侧文档树用于浏览嵌套文档，右侧可以预览或编辑正文内容。",
+      createdAt: "创建于",
+      modifiedAt: "修改于",
       formatting: {
         bold: "加粗",
         italic: "斜体",
@@ -1620,6 +1624,8 @@ const messages = {
       trashedReadonlyNotice: "This note is currently in the trash and is read-only. Restore it to continue editing, or delete it permanently.",
       emptyTitle: "Select a document to begin",
       emptyDescription: "Use the document tree on the left to browse nested documents, then preview or edit content on the right.",
+      createdAt: "Created",
+      modifiedAt: "Modified",
       formatting: {
         bold: "Bold",
         italic: "Italic",
