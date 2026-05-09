@@ -22,18 +22,13 @@ async function main() {
 
   await rm(appContainerDir, { recursive: true, force: true })
   await mkdir(releaseDir, { recursive: true })
+  run(rootDir, "node", ["./scripts/generate-icon.mjs", "--mac"])
   run(rootDir, "ditto", [electronTemplatePath, appBundlePath])
 
   await copyAppPayload(rootDir, appResourcesDir, version)
 
-  // Fall back to the stock Electron icon when the generated .icns asset
-  // is not present in CI or other clean environments.
-  try {
-    await access(customIconPath)
-    await cp(customIconPath, appIconPath)
-  } catch {
-    console.warn(`[metis-note] Custom icon not found at ${customIconPath}; using the default Electron icon.`)
-  }
+  await access(customIconPath)
+  await cp(customIconPath, appIconPath)
 
   run(rootDir, "plutil", ["-replace", "CFBundleDisplayName", "-string", appName, plistPath])
   run(rootDir, "plutil", ["-replace", "CFBundleName", "-string", appName, plistPath])

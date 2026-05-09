@@ -29,7 +29,7 @@ export function FormControl({
       className={cn(
         "flex h-12 items-center rounded-[1rem] border px-4 transition",
         invalid
-          ? "border-[rgba(217,45,32,0.28)] bg-[rgba(254,243,242,0.9)]"
+          ? "border-[rgba(217,45,32,0.28)] bg-[rgba(254,243,242,0.9)] dark:border-[rgba(248,113,113,0.28)] dark:bg-[rgba(127,29,29,0.24)]"
           : tone === "muted"
             ? "border-[#cfd8e6] bg-[#edf3fa] dark:border-[#334155] dark:bg-[#111827]"
             : "border-[#cfd8e6] bg-white dark:border-[#334155] dark:bg-[#0f172a]",
@@ -55,7 +55,7 @@ export function FormError({
   return (
     <div
       className={cn(
-        "rounded-[10px] border border-[rgba(217,45,32,0.18)] bg-[rgba(254,243,242,0.9)] px-4 py-3 text-sm text-[#b42318]",
+        "rounded-[10px] border border-[rgba(217,45,32,0.18)] bg-[rgba(254,243,242,0.9)] px-4 py-3 text-sm text-[#b42318] dark:border-[rgba(248,113,113,0.28)] dark:bg-[rgba(127,29,29,0.24)] dark:text-[#fda29b]",
         className,
       )}
     >

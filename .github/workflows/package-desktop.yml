@@ -45,6 +45,10 @@ jobs:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: true
         run: npm ci --registry=https://registry.npmjs.org
 
+      - name: Install macOS icon tooling
+        if: runner.os == 'macOS'
+        run: brew install librsvg
+
       - name: Type check
         run: npm run typecheck
 

@@ -149,18 +149,18 @@ function shouldRetryManagedLocalDownload(model: LlmModelConfig | null | undefine
 function getManagedLocalStatusClasses(status: ManagedLocalModelStatus) {
   switch (status) {
     case "in-use":
-      return "border-[#dce6f7] bg-[#e8f0ff] text-[#2f6ef6]"
+      return "border-[#dce6f7] bg-[#e8f0ff] text-[#2f6ef6] dark:border-[#24416e] dark:bg-[#13233f] dark:text-[#8eb8ff]"
     case "ready":
-      return "border-[rgba(18,183,106,0.18)] bg-[rgba(18,183,106,0.08)] text-[rgba(2,122,72,0.96)]"
+      return "border-[rgba(18,183,106,0.18)] bg-[rgba(18,183,106,0.08)] text-[rgba(2,122,72,0.96)] dark:border-[rgba(52,211,153,0.28)] dark:bg-[rgba(6,78,59,0.36)] dark:text-emerald-300"
     case "preparing":
     case "downloading":
     case "installing":
     case "starting":
-      return "border-[rgba(181,71,8,0.18)] bg-[rgba(181,71,8,0.08)] text-[rgba(181,71,8,0.96)]"
+      return "border-[rgba(181,71,8,0.18)] bg-[rgba(181,71,8,0.08)] text-[rgba(181,71,8,0.96)] dark:border-[rgba(251,191,36,0.28)] dark:bg-[rgba(120,53,15,0.28)] dark:text-amber-300"
     case "attention":
-      return "border-[rgba(180,35,24,0.16)] bg-[rgba(180,35,24,0.08)] text-[rgba(180,35,24,0.96)]"
+      return "border-[rgba(180,35,24,0.16)] bg-[rgba(180,35,24,0.08)] text-[rgba(180,35,24,0.96)] dark:border-[rgba(248,113,113,0.28)] dark:bg-[rgba(127,29,29,0.28)] dark:text-red-300"
     default:
-      return "border-[#e4e7ec] bg-[#f8fafc] text-[#475467]"
+      return "border-[#e4e7ec] bg-[#f8fafc] text-[#475467] dark:border-[#334155] dark:bg-[#0f172a] dark:text-slate-300"
   }
 }
 
@@ -266,7 +266,7 @@ function ModelSelectField({
       <FormLabel>{label}</FormLabel>
       <FormControl className="pr-3" tone={tone === "soft" ? "muted" : "default"}>
         <select
-          className="h-full w-full appearance-none border-none bg-transparent text-[15px] text-[#243444] outline-none"
+          className="h-full w-full appearance-none border-none bg-transparent text-[15px] text-[#243444] outline-none dark:text-slate-100"
           style={{
             appearance: "none",
             WebkitAppearance: "none",
@@ -282,7 +282,7 @@ function ModelSelectField({
             </option>
           ))}
         </select>
-        <ChevronDown className="pointer-events-none h-4 w-4 shrink-0 text-[#344054]" />
+        <ChevronDown className="pointer-events-none h-4 w-4 shrink-0 text-[#344054] dark:text-slate-400" />
       </FormControl>
     </FormField>
   )
@@ -526,11 +526,11 @@ function ModelDialog({
                   />
 
                   {selectedLocalEntry ? (
-                    <div className="rounded-xl border border-[#e7ebf1] bg-[#fcfdff] px-4 py-4">
+                    <div className="rounded-xl border border-[#e7ebf1] bg-[#fcfdff] px-4 py-4 dark:border-[#243041] dark:bg-[#0b1220]">
                       <div className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-[#1f3045]">{selectedLocalEntry.definition.displayName}</div>
-                          <p className="mt-1 text-sm text-[#667085]">{getQualityLabel(selectedLocalEntry.definition)}</p>
+                          <div className="text-sm font-semibold text-[#1f3045] dark:text-slate-100">{selectedLocalEntry.definition.displayName}</div>
+                          <p className="mt-1 text-sm text-[#667085] dark:text-slate-400">{getQualityLabel(selectedLocalEntry.definition)}</p>
                         </div>
                         <span
                           className={cn(
@@ -543,37 +543,37 @@ function ModelDialog({
                       </div>
 
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-xl border border-[#edf2f7] bg-white px-4 py-3">
-                          <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3]">
+                        <div className="rounded-xl border border-[#edf2f7] bg-white px-4 py-3 dark:border-[#243041] dark:bg-[#0f172a]">
+                          <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3] dark:text-slate-500">
                             {localMessages.downloadSizeLabel}
                           </div>
-                          <div className="mt-1 text-sm font-semibold text-[#1f3045]">
+                          <div className="mt-1 text-sm font-semibold text-[#1f3045] dark:text-slate-100">
                             {formatGiB(selectedLocalEntry.definition.estimatedDownloadSizeGiB)}
                           </div>
                         </div>
-                        <div className="rounded-xl border border-[#edf2f7] bg-white px-4 py-3">
-                          <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3]">
+                        <div className="rounded-xl border border-[#edf2f7] bg-white px-4 py-3 dark:border-[#243041] dark:bg-[#0f172a]">
+                          <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3] dark:text-slate-500">
                             {localMessages.memoryLabel}
                           </div>
-                          <div className="mt-1 text-sm font-semibold text-[#1f3045]">
+                          <div className="mt-1 text-sm font-semibold text-[#1f3045] dark:text-slate-100">
                             {formatGiB(selectedLocalEntry.definition.estimatedRuntimeMemoryGiB)}
                           </div>
                         </div>
                       </div>
 
                       {selectedLocalEntry.definition.notes[0] ? (
-                        <p className="mt-4 text-sm leading-6 text-[#667085]">{selectedLocalEntry.definition.notes[0]}</p>
+                        <p className="mt-4 text-sm leading-6 text-[#667085] dark:text-slate-400">{selectedLocalEntry.definition.notes[0]}</p>
                       ) : null}
 
                       <div className="mt-4">
-                        <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3]">
+                        <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3] dark:text-slate-500">
                           {localMessages.downloadSourcesTitle}
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2">
                           {selectedLocalEntry.definition.downloadSources.map((source) => (
                             <a
                               key={`${selectedLocalEntry.definition.id}-${source.id}`}
-                              className="inline-flex items-center gap-2 rounded-full border border-[#dbe4f0] bg-[#f8fbff] px-3 py-1.5 text-xs font-medium text-[#2f6ef6] transition hover:border-[#bfd3f8] hover:bg-[#edf4ff]"
+                              className="inline-flex items-center gap-2 rounded-full border border-[#dbe4f0] bg-[#f8fbff] px-3 py-1.5 text-xs font-medium text-[#2f6ef6] transition hover:border-[#bfd3f8] hover:bg-[#edf4ff] dark:border-[#24416e] dark:bg-[#13233f] dark:text-[#8eb8ff] dark:hover:border-[#335a8e] dark:hover:bg-[#172d50]"
                               href={source.downloadUrl}
                               rel="noreferrer"
                               target="_blank"
@@ -590,12 +590,12 @@ function ModelDialog({
                       </div>
 
                       {selectedLocalEntry.model?.managedStatusMessage ? (
-                        <p className="mt-3 text-sm leading-6 text-[#b42318]">{selectedLocalEntry.model.managedStatusMessage}</p>
+                        <p className="mt-3 text-sm leading-6 text-[#b42318] dark:text-[#fda29b]">{selectedLocalEntry.model.managedStatusMessage}</p>
                       ) : null}
 
                       {typeof selectedLocalEntry.model?.managedProgress === "number" && isSelectedLocalBusy ? (
                         <div className="mt-4">
-                          <div className="h-2 overflow-hidden rounded-full bg-[#eef2f7]">
+                          <div className="h-2 overflow-hidden rounded-full bg-[#eef2f7] dark:bg-[#1e293b]">
                             <div
                               className="h-full rounded-full bg-[#8eb6e8] transition-all"
                               style={{
@@ -603,7 +603,7 @@ function ModelDialog({
                               }}
                             />
                           </div>
-                          <div className="mt-2 text-xs text-[#667085]">
+                          <div className="mt-2 text-xs text-[#667085] dark:text-slate-400">
                             {formatBytes(selectedLocalEntry.model.managedDownloadedBytes)} /{" "}
                             {formatBytes(selectedLocalEntry.model.managedTotalBytes)}
                           </div>
@@ -762,9 +762,9 @@ function ModelDialog({
             </div>
           </DialogBody>
 
-          <DialogFooter className="border-t border-[#eef2f7]">
+          <DialogFooter className="border-t border-[#eef2f7] dark:border-[#243041]">
             <Button
-              className="h-[46px] min-w-[72px] rounded-[8px] border-[#d4dbe5] bg-white px-4 text-[15px] font-medium text-[#1f3045] shadow-none hover:bg-[#f6f8fb]"
+              className="h-[46px] min-w-[72px] rounded-[8px] border-[#d4dbe5] bg-white px-4 text-[15px] font-medium text-[#1f3045] shadow-none hover:bg-[#f6f8fb] dark:border-[#334155] dark:bg-[#0f172a] dark:text-slate-100 dark:hover:bg-[#111827]"
               size="default"
               variant="outline"
               type="button"
@@ -773,7 +773,7 @@ function ModelDialog({
               {intelligenceMessages.modal.cancelButton}
             </Button>
             <Button
-              className="h-[46px] min-w-[96px] rounded-[8px] bg-[#8eb6e8] px-4 text-[15px] font-medium text-white shadow-none hover:-translate-y-0 hover:bg-[#80aadd]"
+              className="h-[46px] min-w-[96px] rounded-[8px] bg-[#8eb6e8] px-4 text-[15px] font-medium text-white shadow-none hover:-translate-y-0 hover:bg-[#80aadd] dark:bg-[#375bd2] dark:hover:bg-[#4269e5]"
               size="default"
               disabled={
                 isSubmitting ||
@@ -811,8 +811,8 @@ function RowActionButton({
       type="button"
       disabled={disabled}
       className={cn(
-        "text-sm font-medium text-[#475467] transition hover:text-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-50",
-        danger && "text-[#667085] hover:text-[#b42318]",
+        "text-sm font-medium text-[#475467] transition hover:text-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-[#8eb8ff]",
+        danger && "text-[#667085] hover:text-[#b42318] dark:text-slate-400 dark:hover:text-[#fda29b]",
       )}
       onClick={onClick}
     >
@@ -1422,19 +1422,19 @@ export function SettingsPage() {
                       className={cn(
                         "rounded-xl border px-4 py-3 text-sm",
                         feedback.tone === "success"
-                          ? "border-[rgba(18,183,106,0.24)] bg-[rgba(18,183,106,0.08)] text-[rgba(2,122,72,0.96)]"
-                          : "border-[rgba(180,35,24,0.2)] bg-[rgba(180,35,24,0.06)] text-[rgba(180,35,24,0.96)]",
+                          ? "border-[rgba(18,183,106,0.24)] bg-[rgba(18,183,106,0.08)] text-[rgba(2,122,72,0.96)] dark:border-[rgba(52,211,153,0.28)] dark:bg-[rgba(6,78,59,0.28)] dark:text-emerald-300"
+                          : "border-[rgba(180,35,24,0.2)] bg-[rgba(180,35,24,0.06)] text-[rgba(180,35,24,0.96)] dark:border-[rgba(248,113,113,0.28)] dark:bg-[rgba(127,29,29,0.24)] dark:text-[#fda29b]",
                       )}
                     >
                       {feedback.message}
                     </div>
                   ) : null}
 
-                  <div className="mt-6 overflow-hidden rounded-[1.2rem] border border-[#e7ebf1] bg-white">
-                    <div className="flex items-start justify-between gap-5 border-b border-[#e7ebf1] px-5 py-4">
-                      <h2 className="text-lg font-semibold text-[#1f3045]">{intelligenceMessages.remoteTitle}</h2>
+                  <div className="mt-6 overflow-hidden rounded-[1.2rem] border border-[#e7ebf1] bg-white dark:border-[#243041] dark:bg-[#101827]">
+                    <div className="flex items-start justify-between gap-5 border-b border-[#e7ebf1] px-5 py-4 dark:border-[#243041]">
+                      <h2 className="text-lg font-semibold text-[#1f3045] dark:text-slate-100">{intelligenceMessages.remoteTitle}</h2>
                       <Button
-                        className="h-11 rounded-xl border-[#e7ebf1] px-4 text-[15px] font-medium"
+                        className="h-11 rounded-xl border-[#e7ebf1] px-4 text-[15px] font-medium dark:border-[#334155] dark:bg-[#0f172a] dark:text-slate-100 dark:hover:bg-[#111827]"
                         size="lg"
                         variant="outline"
                         onClick={() => {
@@ -1449,11 +1449,11 @@ export function SettingsPage() {
                     </div>
 
                     {isLoading ? (
-                      <div className="px-6 py-10 text-sm text-[#667085]">{intelligenceMessages.loading}</div>
+                      <div className="px-6 py-10 text-sm text-[#667085] dark:text-slate-400">{intelligenceMessages.loading}</div>
                     ) : models.length === 0 ? (
                       <div className="px-6 py-12">
-                        <h3 className="text-base font-semibold text-[#1f3045]">{intelligenceMessages.remoteEmptyTitle}</h3>
-                        <p className="mt-2 max-w-2xl text-sm leading-7 text-[#667085]">
+                        <h3 className="text-base font-semibold text-[#1f3045] dark:text-slate-100">{intelligenceMessages.remoteEmptyTitle}</h3>
+                        <p className="mt-2 max-w-2xl text-sm leading-7 text-[#667085] dark:text-slate-400">
                           {intelligenceMessages.remoteEmptyDescription}
                         </p>
                       </div>
@@ -1461,7 +1461,7 @@ export function SettingsPage() {
                       <div className="overflow-x-auto">
                         <table className="min-w-full border-collapse text-left">
                           <thead>
-                            <tr className="border-b border-[#e7ebf1] bg-[#f8fafc] text-[15px] font-semibold text-[#1f3045]">
+                            <tr className="border-b border-[#e7ebf1] bg-[#f8fafc] text-[15px] font-semibold text-[#1f3045] dark:border-[#243041] dark:bg-[#0b1220] dark:text-slate-200">
                               <th className="px-6 py-5">{intelligenceMessages.columns.identifier}</th>
                               <th className="px-6 py-5">{intelligenceMessages.columns.configType}</th>
                               <th className="px-6 py-5">{intelligenceMessages.columns.actualModelName}</th>
@@ -1491,11 +1491,11 @@ export function SettingsPage() {
                                 model.configType === "managed-local" ? resolveConfiguredModelName(model) : model.identifier
 
                               return (
-                                <tr key={model.id} className="border-b border-[#edf2f7] text-[15px] text-[#344054] last:border-b-0">
-                                  <td className="px-6 py-6 font-semibold text-[#1f3045]">{displayName}</td>
+                                <tr key={model.id} className="border-b border-[#edf2f7] text-[15px] text-[#344054] last:border-b-0 dark:border-[#243041] dark:text-slate-300">
+                                  <td className="px-6 py-6 font-semibold text-[#1f3045] dark:text-slate-100">{displayName}</td>
                                   <td className="px-6 py-6">{configTypeLabel}</td>
                                   <td className="px-6 py-6">
-                                    <div className="text-[#667085]">
+                                    <div className="text-[#667085] dark:text-slate-400">
                                       {model.configType === "managed-local" ? (
                                         definition ? (
                                           formatGiB(definition.estimatedDownloadSizeGiB)
@@ -1507,7 +1507,7 @@ export function SettingsPage() {
                                       )}
                                     </div>
                                     {model.configType === "managed-local" && model.managedStatusMessage ? (
-                                      <p className="mt-2 text-sm leading-6 text-[#b42318]">{model.managedStatusMessage}</p>
+                                      <p className="mt-2 text-sm leading-6 text-[#b42318] dark:text-[#fda29b]">{model.managedStatusMessage}</p>
                                     ) : null}
                                   </td>
                                   <td className="px-6 py-6">
@@ -1573,7 +1573,7 @@ export function SettingsPage() {
                                       <button
                                         type="button"
                                         disabled={isPending}
-                                        className="inline-flex items-center gap-2 text-sm font-medium text-[#667085] transition hover:text-[#b42318] disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="inline-flex items-center gap-2 text-sm font-medium text-[#667085] transition hover:text-[#b42318] disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-400 dark:hover:text-[#fda29b]"
                                         onClick={() => {
                                           void handleDeleteModel(model)
                                         }}
@@ -1592,16 +1592,16 @@ export function SettingsPage() {
                     )}
                   </div>
 
-                  <div className="mt-6 rounded-[1.2rem] border border-[#e7ebf1] bg-white">
-                    <div className="border-b border-[#e7ebf1] px-5 py-4">
-                      <h2 className="text-lg font-semibold text-[#1f3045]">{localMessages.queueTitle}</h2>
-                      <p className="mt-1 text-sm leading-6 text-[#667085]">{localMessages.queueDescription}</p>
+                  <div className="mt-6 rounded-[1.2rem] border border-[#e7ebf1] bg-white dark:border-[#243041] dark:bg-[#101827]">
+                    <div className="border-b border-[#e7ebf1] px-5 py-4 dark:border-[#243041]">
+                      <h2 className="text-lg font-semibold text-[#1f3045] dark:text-slate-100">{localMessages.queueTitle}</h2>
+                      <p className="mt-1 text-sm leading-6 text-[#667085] dark:text-slate-400">{localMessages.queueDescription}</p>
                     </div>
 
                     {managedLocalTaskEntries.length === 0 ? (
-                      <div className="px-5 py-6 text-sm leading-6 text-[#667085]">{localMessages.queueEmpty}</div>
+                      <div className="px-5 py-6 text-sm leading-6 text-[#667085] dark:text-slate-400">{localMessages.queueEmpty}</div>
                     ) : (
-                      <div className="divide-y divide-[#edf2f7]">
+                      <div className="divide-y divide-[#edf2f7] dark:divide-[#243041]">
                         {managedLocalTaskEntries.map(({ definition, model }) => {
                           const progress = model?.managedProgress ?? 0
                           const progressPercent = formatProgressPercent(progress)
@@ -1610,8 +1610,8 @@ export function SettingsPage() {
                             <div key={definition.id} className="px-5 py-5">
                               <div className="flex flex-wrap items-start justify-between gap-3">
                                 <div>
-                                  <div className="text-base font-semibold text-[#1f3045]">{definition.displayName}</div>
-                                  <div className="mt-1 text-sm text-[#667085]">
+                                  <div className="text-base font-semibold text-[#1f3045] dark:text-slate-100">{definition.displayName}</div>
+                                  <div className="mt-1 text-sm text-[#667085] dark:text-slate-400">
                                     {getQualityLabel(definition)}
                                     {" · "}
                                     {formatGiB(definition.estimatedDownloadSizeGiB)}
@@ -1631,11 +1631,11 @@ export function SettingsPage() {
 
                               {typeof model?.managedProgress === "number" ? (
                                 <div className="mt-4">
-                                  <div className="flex items-center justify-between gap-3 text-sm text-[#667085]">
+                                  <div className="flex items-center justify-between gap-3 text-sm text-[#667085] dark:text-slate-400">
                                     <span>{localMessages.progressLabel}</span>
                                     <span>{progressPercent ?? "—"}</span>
                                   </div>
-                                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#eef2f7]">
+                                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#eef2f7] dark:bg-[#1e293b]">
                                     <div
                                       className="h-full rounded-full bg-[#8eb6e8] transition-all"
                                       style={{
@@ -1643,29 +1643,29 @@ export function SettingsPage() {
                                       }}
                                     />
                                   </div>
-                                  <div className="mt-2 text-xs text-[#667085]">
+                                  <div className="mt-2 text-xs text-[#667085] dark:text-slate-400">
                                     {formatBytes(model.managedDownloadedBytes)} / {formatBytes(model.managedTotalBytes)}
                                   </div>
                                 </div>
                               ) : (
-                                <p className="mt-4 text-sm leading-6 text-[#667085]">
+                                <p className="mt-4 text-sm leading-6 text-[#667085] dark:text-slate-400">
                                   {localMessages.queuePreparing(definition.displayName)}
                                 </p>
                               )}
 
                               {model?.managedStatusMessage ? (
-                                <p className="mt-3 text-sm leading-6 text-[#b42318]">{model.managedStatusMessage}</p>
+                                <p className="mt-3 text-sm leading-6 text-[#b42318] dark:text-[#fda29b]">{model.managedStatusMessage}</p>
                               ) : null}
 
                               <div className="mt-4">
-                                <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3]">
+                                <div className="text-xs font-medium uppercase tracking-[0.08em] text-[#98a2b3] dark:text-slate-500">
                                   {localMessages.downloadSourcesTitle}
                                 </div>
                                 <div className="mt-2 flex flex-wrap gap-2">
                                   {definition.downloadSources.map((source) => (
                                     <a
                                       key={`${definition.id}-${source.id}`}
-                                      className="inline-flex items-center gap-2 rounded-full border border-[#dbe4f0] bg-[#f8fbff] px-3 py-1.5 text-xs font-medium text-[#2f6ef6] transition hover:border-[#bfd3f8] hover:bg-[#edf4ff]"
+                                      className="inline-flex items-center gap-2 rounded-full border border-[#dbe4f0] bg-[#f8fbff] px-3 py-1.5 text-xs font-medium text-[#2f6ef6] transition hover:border-[#bfd3f8] hover:bg-[#edf4ff] dark:border-[#24416e] dark:bg-[#13233f] dark:text-[#8eb8ff] dark:hover:border-[#335a8e] dark:hover:bg-[#172d50]"
                                       href={source.downloadUrl}
                                       rel="noreferrer"
                                       target="_blank"

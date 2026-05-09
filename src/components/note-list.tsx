@@ -36,6 +36,8 @@ interface TreeNode {
   children: TreeNode[]
 }
 
+const TREE_ROOT_ID = "__metis_note_tree_root__"
+
 function buildNoteTree(notes: NoteSummary[]) {
   const byId = new Map<string, TreeNode>()
 
@@ -247,13 +249,33 @@ export function NoteList({
     return iconWrapper
   }
 
-  function renderNode(node: TreeNode, depth: number): ReactNode {
-    const hasChildren = node.children.length > 0
-    const isCollapsed = searchValue.trim() ? false : collapsedIds[node.note.id] ?? false
-    const isActive = node.note.id === selectedNoteId
-
+  function renderTreeRow({
+    id,
+    label,
+    depth,
+    icon,
+    isActive,
+    hasChildren,
+    isCollapsed,
+    children,
+    trailing,
+    onClick,
+    onDoubleClick,
+  }: {
+    id: string
+    label: string
+    depth: number
+    icon: ReactNode
+    isActive: boolean
+    hasChildren: boolean
+    isCollapsed: boolean
+    children?: ReactNode
+    trailing?: ReactNode
+    onClick: () => void
+    onDoubleClick?: () => void
+  }) {
     return (
-      <div key={node.note.id}>
+      <div key={id}>
         <div
           className={cn(
             "group flex items-center gap-1 rounded-lg pr-2 transition",
@@ -270,7 +292,7 @@ export function NoteList({
             onClick={() =>
               setCollapsedIds((current) => ({
                 ...current,
-                [node.note.id]: !isCollapsed,
+                [id]: !isCollapsed,
               }))
             }
           >
@@ -281,7 +303,7 @@ export function NoteList({
             )}
           </button>
 
-          {renderDocIcon(node.note.id, isActive)}
+          {icon}
 
           <button
             type="button"
@@ -289,72 +311,128 @@ export function NoteList({
               "min-w-0 flex-1 truncate rounded-md py-1.5 text-left text-[13px] font-medium transition",
               isActive ? "text-[#1d4ed8] dark:text-[#8eb8ff]" : "text-[#344054] dark:text-slate-200",
             )}
-            onClick={() => schedulePreviewOpen(node.note.id)}
-            onDoubleClick={() => openInEditMode(node.note.id)}
+            onClick={onClick}
+            onDoubleClick={onDoubleClick}
           >
-            {node.note.title}
+            {label}
           </button>
 
-          {node.note.isFavorite && (
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#f472b6] dark:text-[#f9a8d4]">
-              <Heart className="h-3 w-3 fill-current" />
-            </span>
-          )}
-
-          {node.note.isPinned && (
-            <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#e0ac12] dark:text-[#facc15]">
-              <Star className="h-3 w-3 fill-current" />
-            </span>
-          )}
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#9aa2af] transition hover:bg-white hover:text-foreground dark:text-slate-500 dark:hover:bg-[#1e293b]",
-                  "opacity-0 group-hover:opacity-100",
-                )}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <Ellipsis className="h-4 w-4" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
-              {node.note.status === "trashed" ? (
-                <>
-                  <DropdownMenuItem onClick={() => onRestoreNote(node.note.id)}>
-                    <RotateCcw className="mr-2 h-4 w-4" />
-                    {messages.tree.restoreTitle}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDeleteForever(node.note.id)}>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    {messages.tree.deleteForeverTitle}
-                  </DropdownMenuItem>
-                </>
-              ) : (
-                <>
-                  <DropdownMenuItem onClick={() => onTogglePin(node.note.id)}>
-                    <Star className={cn("mr-2 h-4 w-4", node.note.isPinned && "fill-current")} />
-                    {node.note.isPinned ? messages.tree.unpinTitle : messages.tree.pinTitle}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onToggleFavorite(node.note.id)}>
-                    <Heart className={cn("mr-2 h-4 w-4", node.note.isFavorite && "fill-current")} />
-                    {node.note.isFavorite ? messages.tree.unfavoriteTitle : messages.tree.favoriteTitle}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onMoveToTrash(node.note.id)}>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    {messages.tree.moveToTrashTitle}
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {trailing}
         </div>
 
-        {!isCollapsed && hasChildren ? <div>{node.children.map((child) => renderNode(child, depth + 1))}</div> : null}
+        {!isCollapsed && hasChildren ? <div>{children}</div> : null}
       </div>
     )
+  }
+
+  function renderNode(node: TreeNode, depth: number): ReactNode {
+    const hasChildren = node.children.length > 0
+    const isCollapsed = searchValue.trim() ? false : collapsedIds[node.note.id] ?? false
+    const isActive = node.note.id === selectedNoteId
+
+    const trailing = (
+      <>
+        {node.note.isFavorite && (
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#f472b6] dark:text-[#f9a8d4]">
+            <Heart className="h-3 w-3 fill-current" />
+          </span>
+        )}
+
+        {node.note.isPinned && (
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[#e0ac12] dark:text-[#facc15]">
+            <Star className="h-3 w-3 fill-current" />
+          </span>
+        )}
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#9aa2af] transition hover:bg-white hover:text-foreground dark:text-slate-500 dark:hover:bg-[#1e293b]",
+                "opacity-0 group-hover:opacity-100",
+              )}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <Ellipsis className="h-4 w-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-40">
+            {node.note.status === "trashed" ? (
+              <>
+                <DropdownMenuItem onClick={() => onRestoreNote(node.note.id)}>
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  {messages.tree.restoreTitle}
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onDeleteForever(node.note.id)}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {messages.tree.deleteForeverTitle}
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
+                <DropdownMenuItem onClick={() => onTogglePin(node.note.id)}>
+                  <Star className={cn("mr-2 h-4 w-4", node.note.isPinned && "fill-current")} />
+                  {node.note.isPinned ? messages.tree.unpinTitle : messages.tree.pinTitle}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onToggleFavorite(node.note.id)}>
+                  <Heart className={cn("mr-2 h-4 w-4", node.note.isFavorite && "fill-current")} />
+                  {node.note.isFavorite ? messages.tree.unfavoriteTitle : messages.tree.favoriteTitle}
+                </DropdownMenuItem>
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onMoveToTrash(node.note.id)}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {messages.tree.moveToTrashTitle}
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </>
+    )
+
+    return renderTreeRow({
+      id: node.note.id,
+      label: node.note.title,
+      depth,
+      icon: renderDocIcon(node.note.id, isActive),
+      isActive,
+      hasChildren,
+      isCollapsed,
+      trailing,
+      onClick: () => schedulePreviewOpen(node.note.id),
+      onDoubleClick: () => openInEditMode(node.note.id),
+      children: node.children.map((child) => renderNode(child, depth + 1)),
+    })
+  }
+
+  function renderTreeRoot(title: string, icon: ReactNode, nodes: TreeNode[]) {
+    if (nodes.length === 0) {
+      return null
+    }
+
+    const rootId = `${TREE_ROOT_ID}:${activeView}:${title}`
+    const isCollapsed = searchValue.trim() ? false : collapsedIds[rootId] ?? false
+
+    return renderTreeRow({
+      id: rootId,
+      label: title,
+      depth: 0,
+      icon: (
+        <span
+          className={cn(
+            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md",
+            selectedNoteId === null ? "bg-white text-[#4a7cff] dark:bg-[#0f172a]" : "text-[#9aa2af] dark:text-slate-500",
+          )}
+        >
+          {icon}
+        </span>
+      ),
+      isActive: selectedNoteId === null,
+      hasChildren: nodes.length > 0,
+      isCollapsed,
+      onClick: onDeselectNote,
+      children: nodes.map((node) => renderNode(node, 1)),
+    })
   }
 
   function renderSection(title: string, icon: ReactNode, nodes: TreeNode[]) {
@@ -431,10 +509,10 @@ export function NoteList({
             {activeView === "all" ? (
               <>
                 {renderSection(messages.tree.pinnedTitle, <Star className="h-3.5 w-3.5" />, pinnedNodes)}
-                {renderSection(messages.tree.titleAll, <ListTree className="h-3.5 w-3.5" />, regularRoots)}
+                {renderTreeRoot(messages.tree.titleAll, <ListTree className="h-3.5 w-3.5" />, regularRoots)}
               </>
             ) : (
-              renderSection(
+              renderTreeRoot(
                 activeView === "favorites" ? messages.tree.titleFavorites : activeView === "trash" ? messages.tree.titleTrash : messages.tree.titleAll,
                 activeView === "favorites" ? <Heart className="h-3.5 w-3.5" /> : <ListTree className="h-3.5 w-3.5" />,
                 regularRoots,

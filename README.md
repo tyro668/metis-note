@@ -143,6 +143,11 @@ npm run build
 # TypeScript 检查
 npm run typecheck
 
+# 重新生成桌面端图标
+npm run icons
+npm run icons:mac
+npm run icons:win
+
 # 打包 macOS App
 npm run package:mac
 

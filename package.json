@@ -14,6 +14,9 @@
   "scripts": {
     "dev": "vite",
     "dev:baidu-pan-broker": "node ./scripts/baidu-pan-auth-broker.mjs",
+    "icons": "node ./scripts/generate-icon.mjs",
+    "icons:mac": "node ./scripts/generate-icon.mjs --mac",
+    "icons:win": "node ./scripts/generate-icon.mjs --windows",
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "package:mac": "npm run build && node ./scripts/package-mac.mjs",
