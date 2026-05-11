@@ -49,20 +49,20 @@ export interface AppMessages {
         unsupported: string
         checkButton: string
         checkingButton: string
-        downloadButton: string
-        downloadingButton: string
+        installButton: string
+        installingButton: string
         openReleaseButton: string
         publishedAt: (value: string) => string
         notices: {
           upToDate: (version: string) => string
           available: (version: string) => string
-          downloaded: (fileName: string) => string
+          installStarted: (version: string) => string
           releaseOpened: string
         }
         errors: {
           loadFailed: string
           checkFailed: string
-          downloadFailed: string
+          installFailed: string
           releaseOpenFailed: string
           unsupportedPlatform: string
           missingAsset: string
@@ -697,7 +697,7 @@ const messages = {
         },
         update: {
           title: "应用更新",
-          description: "从 GitHub Releases 检查并下载适用于当前系统的新版本。下载完成后，应用会打开文件所在位置，按系统方式安装替换即可。",
+          description: "从 GitHub Releases 检查适用于当前系统的新版本。确认升级后，应用会自动下载、安装并重启。",
           currentVersionLabel: "当前版本",
           latestVersionLabel: "最新版本",
           latestVersionUnknown: "尚未获取",
@@ -707,20 +707,20 @@ const messages = {
           unsupported: "当前平台暂不支持在线更新",
           checkButton: "检查更新",
           checkingButton: "检查中...",
-          downloadButton: "下载更新包",
-          downloadingButton: "下载中...",
+          installButton: "自动升级并重启",
+          installingButton: "升级中...",
           openReleaseButton: "查看发布页",
           publishedAt: (value) => `发布时间：${value}`,
           notices: {
             upToDate: (version) => `当前已经是最新版本：${version}`,
             available: (version) => `检测到新版本：${version}`,
-            downloaded: (fileName) => `更新包已下载完成：${fileName}`,
+            installStarted: (version) => `正在安装 ${version}，应用即将自动重启。`,
             releaseOpened: "已打开 GitHub 发布页",
           },
           errors: {
             loadFailed: "加载当前版本信息失败",
             checkFailed: "检查更新失败",
-            downloadFailed: "下载更新包失败",
+            installFailed: "自动升级失败",
             releaseOpenFailed: "打开发布页失败",
             unsupportedPlatform: "当前平台暂不支持在线更新",
             missingAsset: "当前平台没有可用的更新包",
@@ -1354,7 +1354,7 @@ const messages = {
       },
       update: {
         title: "Application Updates",
-        description: "Check GitHub Releases and download the latest package for the current platform. After the download finishes, the app opens the file location so you can install it with the system workflow.",
+        description: "Check GitHub Releases for the latest package for this platform. After you confirm, the app downloads, installs, and restarts automatically.",
         currentVersionLabel: "Current version",
         latestVersionLabel: "Latest version",
         latestVersionUnknown: "Not checked yet",
@@ -1364,20 +1364,20 @@ const messages = {
         unsupported: "Online updates are not available on this platform",
         checkButton: "Check for updates",
         checkingButton: "Checking...",
-        downloadButton: "Download Update",
-        downloadingButton: "Downloading...",
+        installButton: "Update and Restart",
+        installingButton: "Updating...",
         openReleaseButton: "Open Release Page",
         publishedAt: (value) => `Published: ${value}`,
         notices: {
           upToDate: (version) => `This installation is already up to date: ${version}`,
           available: (version) => `New version available: ${version}`,
-          downloaded: (fileName) => `Downloaded update package: ${fileName}`,
+          installStarted: (version) => `Installing ${version}. The app will restart automatically.`,
           releaseOpened: "Opened the GitHub releases page",
         },
         errors: {
           loadFailed: "Failed to load the current version information",
           checkFailed: "Failed to check for updates",
-          downloadFailed: "Failed to download the update package",
+          installFailed: "Failed to install the update automatically",
           releaseOpenFailed: "Failed to open the release page",
           unsupportedPlatform: "Online updates are not available on this platform",
           missingAsset: "No update package is available for this platform",

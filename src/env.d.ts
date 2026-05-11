@@ -19,7 +19,11 @@ import type {
   UpdateNoteInput,
 } from "./shared/notes"
 import type { SaveTemplateInput, TemplateDocument, TemplateSummary } from "./shared/templates"
-import type { AppUpdateCheckResult, AppUpdateCurrentInfo, AppUpdateDownloadResult } from "./shared/updates"
+import type {
+  AppUpdateCheckResult,
+  AppUpdateCurrentInfo,
+  AppUpdateInstallResult,
+} from "./shared/updates"
 import type { NoteVersionContent, VersionSummary } from "./shared/versions"
 import type {
   BaiduPanAuthResult,
@@ -91,7 +95,7 @@ declare global {
       updates: {
         getCurrentInfo: () => Promise<AppUpdateCurrentInfo>
         check: () => Promise<AppUpdateCheckResult>
-        downloadLatest: () => Promise<AppUpdateDownloadResult>
+        installLatest: () => Promise<AppUpdateInstallResult>
         openReleasePage: (releasePageUrl?: string) => Promise<void>
       }
       sync: {

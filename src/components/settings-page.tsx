@@ -835,7 +835,7 @@ export function SettingsPage() {
   const [updateInfo, setUpdateInfo] = useState<AppUpdateCheckResult | null>(null)
   const [isLoadingUpdateInfo, setIsLoadingUpdateInfo] = useState(false)
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false)
-  const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false)
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false)
   const [updateFeedback, setUpdateFeedback] = useState<{ tone: "success" | "error"; message: string } | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingModel, setEditingModel] = useState<LlmModelConfig | null>(null)
@@ -974,7 +974,7 @@ export function SettingsPage() {
     }
   }
 
-  async function handleDownloadUpdate() {
+  async function handleInstallUpdate() {
     const updateMessages = settingsMessages.general.update
     if (!updateInfo?.current.supported) {
       setUpdateFeedback({
@@ -992,21 +992,29 @@ export function SettingsPage() {
       return
     }
 
-    setIsDownloadingUpdate(true)
-
-    try {
-      const result = await window.metisNote.updates.downloadLatest()
+    if (!updateInfo.updateAvailable) {
       setUpdateFeedback({
         tone: "success",
-        message: updateMessages.notices.downloaded(result.assetName),
+        message: updateMessages.notices.upToDate(formatUpdateVersion(updateInfo.current)),
+      })
+      return
+    }
+
+    setIsInstallingUpdate(true)
+
+    try {
+      const result = await window.metisNote.updates.installLatest()
+      setUpdateFeedback({
+        tone: "success",
+        message: updateMessages.notices.installStarted(result.tagName),
       })
     } catch (error) {
       setUpdateFeedback({
         tone: "error",
-        message: error instanceof Error ? error.message : updateMessages.errors.downloadFailed,
+        message: error instanceof Error ? error.message : updateMessages.errors.installFailed,
       })
     } finally {
-      setIsDownloadingUpdate(false)
+      setIsInstallingUpdate(false)
     }
   }
 
@@ -1334,7 +1342,7 @@ export function SettingsPage() {
                           onClick={() => {
                             void handleCheckForUpdates()
                           }}
-                          disabled={isCheckingUpdates || isDownloadingUpdate}
+                          disabled={isCheckingUpdates || isInstallingUpdate}
                         >
                           <RefreshCw className={cn("h-4 w-4", isCheckingUpdates && "animate-spin")} />
                           {isCheckingUpdates ? updateMessages.checkingButton : updateMessages.checkButton}
@@ -1342,12 +1350,17 @@ export function SettingsPage() {
                         <Button
                           className="h-10 rounded-xl px-4 text-sm font-medium"
                           onClick={() => {
-                            void handleDownloadUpdate()
+                            void handleInstallUpdate()
                           }}
-                          disabled={isCheckingUpdates || isDownloadingUpdate || !updateInfo?.latest?.asset}
+                          disabled={
+                            isCheckingUpdates ||
+                            isInstallingUpdate ||
+                            !updateInfo?.updateAvailable ||
+                            !updateInfo.latest?.asset
+                          }
                         >
-                          <Download className="h-4 w-4" />
-                          {isDownloadingUpdate ? updateMessages.downloadingButton : updateMessages.downloadButton}
+                          <Download className={cn("h-4 w-4", isInstallingUpdate && "animate-pulse")} />
+                          {isInstallingUpdate ? updateMessages.installingButton : updateMessages.installButton}
                         </Button>
                         <Button
                           className="h-10 rounded-xl px-4 text-sm font-medium"

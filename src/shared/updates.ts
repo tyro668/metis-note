@@ -28,9 +28,9 @@ export interface AppUpdateCheckResult {
   updateAvailable: boolean
 }
 
-export interface AppUpdateDownloadResult {
-  filePath: string
+export interface AppUpdateInstallResult {
   assetName: string
   tagName: string
   releasePageUrl: string
+  willRestart: boolean
 }
